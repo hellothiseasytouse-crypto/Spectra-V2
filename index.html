@@ -1,298 +1,129 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+    <title>SPECTRA</title>
 
-    <title>SPECTRA v0.5</title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
-
+    <link rel="stylesheet" href="style.css">
 </head>
-
 
 <body>
 
-    <main class="app">
+<div class="app">
 
+    <div class="camera-wrapper">
 
-        <!-- =================================================
-             TOP BAR
-        ================================================== -->
+        <!-- Camera source -->
+        <video id="camera"
+               autoplay
+               playsinline
+               muted></video>
 
-        <header class="topbar">
+        <!-- Everything is rendered here -->
+        <canvas id="overlay"></canvas>
 
-            <div>
+        <div class="hud">
 
-                <h1>SPECTRA</h1>
-
-                <p>
-                    VISION INTERACTION SYSTEM // v0.5
-                </p>
-
+            <div class="top-left">
+                <div class="title">SPECTRA</div>
+                <div class="mode">MODE // VISION AI</div>
             </div>
 
-
-            <div class="system-status">
-
-                <span id="statusDot"></span>
-
-                <span id="systemStatus">
-                    OFFLINE
-                </span>
-
+            <div class="top-right">
+                <div>HAND // <span id="handStatus">WAITING</span></div>
+                <div>FACE // <span id="faceStatus">WAITING</span></div>
+                <div>FPS // <span id="fps">0</span></div>
             </div>
 
-        </header>
-
-
-        <!-- =================================================
-             CAMERA
-        ================================================== -->
-
-        <section class="camera-wrapper">
-
-            <video
-                id="camera"
-                autoplay
-                playsinline
-                muted
-            ></video>
-
-
-            <canvas
-                id="overlay"
-            ></canvas>
-
-
-            <div class="scanlines"></div>
-
-
-            <div id="cameraMessage">
-                CAMERA OFF
+            <div class="center-info">
+                <div class="target-label">SPECTRA VISION</div>
+                <div class="crosshair"></div>
             </div>
 
-
-            <!-- TOP LEFT -->
-
-            <div class="hud hud-top-left">
-
-                <div>
-                    MODE // VISION
-                </div>
-
-                <div id="handState">
-                    HAND // NOT DETECTED
-                </div>
-
+            <div class="bottom-left">
+                <div>GESTURE // <span id="gesture">NONE</span></div>
+                <div>SIGN // <span id="sign">NONE</span></div>
+                <div>SHAPE // <span id="shapeStatus">READY</span></div>
             </div>
 
-
-            <!-- TOP RIGHT -->
-
-            <div class="hud hud-top-right">
-
-                <div>
-                    TARGET //
-                    <span id="targetNumber">
-                        00
-                    </span>
-                </div>
-
-                <div>
-
-                    X:
-                    <span id="xValue">
-                        ---
-                    </span>
-
-                    Y:
-                    <span id="yValue">
-                        ---
-                    </span>
-
-                </div>
-
+            <div class="bottom-right">
+                <div>OBJECTS // <span id="objectStatus">OFF</span></div>
+                <div>FILTER // <span id="filterStatus">OFF</span></div>
             </div>
 
+        </div>
 
-            <!-- BOTTOM LEFT -->
+    </div>
 
-            <div class="hud hud-bottom-left">
+    <div class="controls">
 
-                <div>
+        <button id="startBtn">START CAMERA</button>
 
-                    FPS
-                    <span id="fpsValue">
-                        00
-                    </span>
+        <button id="trackingBtn">
+            HAND TRACKING ON
+        </button>
 
-                </div>
+        <button id="targetBtn">
+            TARGET BOX ON
+        </button>
 
+        <button id="objectBtn">
+            OBJECT DETECTION OFF
+        </button>
 
-                <div>
+        <button id="privacyBtn">
+            FACE PRIVACY OFF
+        </button>
 
-                    STATE
+        <button id="signBtn">
+            SIGN LANGUAGE OFF
+        </button>
 
-                    <span id="trackingState">
-                        IDLE
-                    </span>
+        <button id="filterBtn">
+            FILTER OFF
+        </button>
 
-                </div>
+        <button id="shapeBtn">
+            SHAPES ON
+        </button>
 
-            </div>
+    </div>
 
+    <div class="info-panel">
 
-            <!-- BOTTOM RIGHT -->
+        <div>
+            <span>HANDS</span>
+            <strong id="handsInfo">0</strong>
+        </div>
 
-            <div class="hud hud-bottom-right">
+        <div>
+            <span>FACES</span>
+            <strong id="facesInfo">0</strong>
+        </div>
 
-                <div>
-                    SPECTRA
-                </div>
+        <div>
+            <span>GESTURE</span>
+            <strong id="gestureInfo">NONE</strong>
+        </div>
 
+        <div>
+            <span>SIGN</span>
+            <strong id="signInfo">NONE</strong>
+        </div>
 
-                <div id="gestureText">
-                    GESTURE // NONE
-                </div>
+        <div>
+            <span>SHAPES</span>
+            <strong id="shapesInfo">0</strong>
+        </div>
 
-            </div>
+    </div>
 
-        </section>
+</div>
 
-
-        <!-- =================================================
-             CONTROLS
-        ================================================== -->
-
-        <section class="controls">
-
-
-            <button id="startButton">
-                START CAMERA
-            </button>
-
-
-            <button
-                id="trackingButton"
-                disabled
-            >
-                HAND TRACKING
-            </button>
-
-
-            <button id="boxButton">
-                TARGET BOX ON
-            </button>
-
-
-            <button id="objectButton">
-                OBJECT DETECTION OFF
-            </button>
-
-
-            <button id="privacyButton">
-                FACE PRIVACY OFF
-            </button>
-
-
-            <button id="signButton">
-                SIGN LANGUAGE OFF
-            </button>
-
-
-            <button id="objectModeButton">
-                OBJECT MODE ON
-            </button>
-
-
-        </section>
-
-
-        <!-- =================================================
-             INFORMATION PANEL
-        ================================================== -->
-
-        <section class="info-panel">
-
-
-            <div class="info-item">
-
-                <span>
-                    HANDS
-                </span>
-
-                <strong id="handsValue">
-                    0
-                </strong>
-
-            </div>
-
-
-            <div class="info-item">
-
-                <span>
-                    INDEX
-                </span>
-
-                <strong id="indexValue">
-                    ---
-                </strong>
-
-            </div>
-
-
-            <div class="info-item">
-
-                <span>
-                    PINCH
-                </span>
-
-                <strong id="pinchValue">
-                    ---
-                </strong>
-
-            </div>
-
-
-            <div class="info-item">
-
-                <span>
-                    GESTURE
-                </span>
-
-                <strong id="gestureValue">
-                    NONE
-                </strong>
-
-            </div>
-
-
-        </section>
-
-
-        <p id="status">
-            System ready.
-        </p>
-
-
-    </main>
-
-
-    <script
-        type="module"
-        src="script.js"
-    ></script>
+<script type="module" src="script.js"></script>
 
 </body>
-
 </html>
