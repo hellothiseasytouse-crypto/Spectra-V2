@@ -8,7 +8,7 @@ import {
 
 /* =========================================================
    SPECTRA
-   HAND TRACKING / LANDMARK GEOMETRY / FACE / FPS
+   FAST HAND TRACKING / LANDMARK GEOMETRY / FACE / FPS
 ========================================================= */
 
 
@@ -69,22 +69,19 @@ const shapeBtn =
 
 
 /* =========================================================
-   CREATE / FIND STATUS ELEMENTS
+   STATUS ELEMENT CREATOR
 ========================================================= */
 
 function createStatusElement(id, text) {
 
-    let el =
-        document.getElementById(id);
+    let el = document.getElementById(id);
 
     if (el) return el;
-
 
     const controls =
         document.querySelector(".controls");
 
     if (!controls) return null;
-
 
     el =
         document.createElement("button");
@@ -108,7 +105,7 @@ const gestureDisplay =
 const signDisplay =
     createStatusElement(
         "signDisplay",
-        "SIGN // WAITING"
+        "SIGN // OFF"
     );
 
 
@@ -180,8 +177,6 @@ let privacyMode = "OFF";
 
 let faceFilter = "OFF";
 
-let automaticTwistFilter = false;
-
 
 /* =========================================================
    PERFORMANCE
@@ -199,25 +194,25 @@ let fpsBoost = false;
 
 const PERFORMANCE_NORMAL = isMobile
     ? {
-        hands: 45,
-        face: 150,
-        objects: 350
+        hands: 35,
+        face: 180,
+        objects: 400
     }
     : {
-        hands: 24,
-        face: 90,
-        objects: 220
+        hands: 20,
+        face: 110,
+        objects: 250
     };
 
 
 const PERFORMANCE_BOOST = isMobile
     ? {
-        hands: 55,
+        hands: 40,
         face: 999999,
         objects: 999999
     }
     : {
-        hands: 36,
+        hands: 25,
         face: 999999,
         objects: 999999
     };
@@ -258,16 +253,11 @@ let frames = 0;
 let fps = 0;
 
 let fpsTimer =
-    performanceNow();
-
-
-function performanceNow() {
-    return window.performance.now();
-}
+    performance.now();
 
 
 /* =========================================================
-   GEOMETRY
+   GEOMETRY MODES
 ========================================================= */
 
 let geometryMode = 0;
@@ -281,76 +271,195 @@ const GEOMETRY_MODES = [
 ];
 
 
-/*
-    Much smoother than the previous 0.22 constant.
+/* =========================================================
+   GEOMETRY FILTERS
+========================================================= */
 
-    The actual smoothing amount is adaptive:
-    fast movements get less smoothing,
-    tiny jitter gets more smoothing.
+let geometryFilter = 0;
+
+
+const GEOMETRY_FILTERS = [
+    "NORMAL",
+    "INVERT",
+    "CYBER",
+    "BLUEPRINT",
+    "CONTRAST"
+];
+
+
+/* =========================================================
+   FAST GEOMETRY TRACKING
+========================================================= */
+
+/*
+    Lower values = smoother.
+    Higher values = more responsive.
+
+    The adaptive system below automatically becomes
+    more responsive when the hand starts moving quickly.
 */
 
-const GEOMETRY_BASE_SMOOTHING = 0.24;
+const GEOMETRY_SMOOTHING_SLOW = 0.42;
 
-const GEOMETRY_FAST_SMOOTHING = 0.48;
+const GEOMETRY_SMOOTHING_FAST = 0.78;
 
 
-const geometrySmooth =
+/*
+    Stores previous positions and velocity.
+*/
+
+const geometryPoints =
     new Map();
 
 
-let geometryLastCenter = null;
+/*
+    Temporary predicted positions.
+*/
 
-let geometryVelocity = 0;
-
-
-/* =========================================================
-   TWIST STATE
-========================================================= */
-
-let twistAngle = 0;
-
-let twistNormalized = 0;
-
-let twistTarget = 0;
-
-let twistFilterName = "NORMAL";
-
-let previousTwistAngle = 0;
+const geometryVelocity =
+    new Map();
 
 
-/* =========================================================
-   VISUAL STATE
-========================================================= */
+/*
+    How much we predict forward.
+*/
 
-let visualEnergy = 0;
+const PREDICTION_TIME =
+    0.055;
 
-let visualEnergyTarget = 0;
 
-let inversionAmount = 0;
+/*
+    Maximum prediction so fast movement
+    does not launch the geometry off-screen.
+*/
 
-let inversionTarget = 0;
+const MAX_PREDICTION =
+    55;
 
 
 /* =========================================================
-   MEASUREMENT STATE
+   DOUBLE PINCH
 ========================================================= */
 
-let displayedWidth = 0;
+let bothHandsPinching = false;
 
-let displayedHeight = 0;
+let pinchSequenceCount = 0;
+
+let lastPinchSequence =
+    0;
+
+
+const DOUBLE_PINCH_WINDOW =
+    700;
+
+
+function checkDoublePinch(
+    hands,
+    timestamp
+) {
+
+    if (hands.length < 2) {
+
+        bothHandsPinching = false;
+        pinchSequenceCount = 0;
+
+        return;
+    }
+
+
+    const first =
+        isPinchingFast(
+            hands[0]
+        );
+
+
+    const second =
+        isPinchingFast(
+            hands[1]
+        );
+
+
+    const both =
+        first &&
+        second;
+
+
+    /*
+        Only register the moment
+        when both fingers become pinched.
+
+        Holding the pinch does NOT repeatedly
+        change the filter.
+    */
+
+    if (
+        both &&
+        !bothHandsPinching
+    ) {
+
+        if (
+            timestamp -
+            lastPinchSequence <=
+            DOUBLE_PINCH_WINDOW
+        ) {
+
+            pinchSequenceCount++;
+
+        } else {
+
+            pinchSequenceCount = 1;
+        }
+
+
+        lastPinchSequence =
+            timestamp;
+
+
+        if (
+            pinchSequenceCount >= 2
+        ) {
+
+            cycleGeometryFilter();
+
+            pinchSequenceCount = 0;
+        }
+    }
+
+
+    bothHandsPinching =
+        both;
+}
 
 
 /* =========================================================
-   GESTURE SMOOTHING
+   CHANGE GEOMETRY FILTER
 ========================================================= */
 
-let lastGestureName = "NONE";
+function cycleGeometryFilter() {
 
-let gestureStableFrames = 0;
+    geometryFilter =
+        (
+            geometryFilter + 1
+        ) %
+        GEOMETRY_FILTERS.length;
 
-let lastSignName = "NONE";
 
-let signStableFrames = 0;
+    const filter =
+        GEOMETRY_FILTERS[
+            geometryFilter
+        ];
+
+
+    setShapeStatus(
+        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${filter}`
+    );
+
+
+    console.log(
+        "SPECTRA // GEOMETRY FILTER:",
+        filter
+    );
+}
 
 
 /* =========================================================
@@ -449,7 +558,7 @@ async function startCamera() {
 
 
 /* =========================================================
-   LOAD CORE VISION
+   LOAD VISION
 ========================================================= */
 
 async function loadVision() {
@@ -509,13 +618,13 @@ async function loadGestureRecognizer() {
                             2,
 
                         minHandDetectionConfidence:
-                            0.45,
+                            0.40,
 
                         minHandPresenceConfidence:
-                            0.45,
+                            0.40,
 
                         minTrackingConfidence:
-                            0.45
+                            0.35
                     }
                 );
 
@@ -568,7 +677,7 @@ async function loadFaceDetector() {
                             "VIDEO",
 
                         minDetectionConfidence:
-                            0.5
+                            0.45
                     }
                 );
 
@@ -683,10 +792,6 @@ if (fpsBoostBtn) {
                     "OFF";
 
 
-                automaticTwistFilter =
-                    false;
-
-
                 handTracking =
                     true;
 
@@ -771,23 +876,25 @@ if (trackingBtn) {
                 !handTracking;
 
 
-            if (!handTracking) {
-
-                handResults =
-                    null;
-
-
-                geometrySmooth.clear();
-
-
-                resetGeometryVisuals();
-            }
-
-
             trackingBtn.textContent =
                 handTracking
                     ? "HAND TRACKING ON"
                     : "HAND TRACKING OFF";
+
+
+            if (!handTracking) {
+
+                setGesture(
+                    "OFF"
+                );
+
+
+                if (signDisplay) {
+
+                    signDisplay.textContent =
+                        "SIGN // OFF";
+                }
+            }
         };
 }
 
@@ -896,16 +1003,6 @@ if (filterBtn) {
                 ];
 
 
-            /*
-                Manual button control disables
-                automatic twist filtering until
-                the user twists again.
-            */
-
-            automaticTwistFilter =
-                false;
-
-
             filterBtn.textContent =
                 `FILTER ${faceFilter}`;
 
@@ -992,22 +1089,22 @@ if (signBtn) {
 
             if (!signLanguage) {
 
-                setSign(
-                    "OFF"
-                );
+                if (signDisplay) {
+
+                    signDisplay.textContent =
+                        "SIGN // OFF";
+                }
 
             } else {
 
-                setSign(
-                    "WAITING"
-                );
+                updateSignLanguage();
             }
         };
 }
 
 
 /* =========================================================
-   SHAPE / GEOMETRY BUTTON
+   SHAPE BUTTON
 ========================================================= */
 
 if (shapeBtn) {
@@ -1111,16 +1208,6 @@ function render(timestamp) {
     drawHands();
 
 
-    /*
-        Apply the twist inversion LAST.
-
-        This means the geometry and camera receive
-        the same visual treatment.
-    */
-
-    drawTwistInversion();
-
-
     updateFPS();
 
 
@@ -1131,7 +1218,7 @@ function render(timestamp) {
 
 
 /* =========================================================
-   CAMERA DRAW
+   CAMERA
 ========================================================= */
 
 function drawCamera() {
@@ -1168,9 +1255,7 @@ function drawCamera() {
    HAND DETECTION
 ========================================================= */
 
-function runHands(
-    timestamp
-) {
+function runHands(timestamp) {
 
     if (!gestureRecognizer) return;
 
@@ -1215,12 +1300,10 @@ function runHands(
 
 
 /* =========================================================
-   FACE DETECTION
+   FACE
 ========================================================= */
 
-function runFace(
-    timestamp
-) {
+function runFace(timestamp) {
 
     if (!faceDetector) return;
 
@@ -1248,7 +1331,6 @@ function runFace(
                     timestamp
                 );
 
-
     } catch (error) {
 
         console.error(
@@ -1260,12 +1342,10 @@ function runFace(
 
 
 /* =========================================================
-   OBJECT DETECTION
+   OBJECTS
 ========================================================= */
 
-function runObjects(
-    timestamp
-) {
+function runObjects(timestamp) {
 
     if (!objectDetector) return;
 
@@ -1292,7 +1372,6 @@ function runObjects(
                     video,
                     timestamp
                 );
-
 
     } catch (error) {
 
@@ -1337,15 +1416,6 @@ function updateGesture() {
     }
 
 
-    const first =
-        hands[0]?.[0];
-
-
-    let gesture =
-        first?.categoryName ||
-        "TRACKING";
-
-
     const names = {
 
         Open_Palm:
@@ -1367,57 +1437,78 @@ function updateGesture() {
             "VICTORY",
 
         ILoveYou:
-            "I LOVE YOU"
+            "I LOVE YOU",
+
+        None:
+            "NONE"
     };
 
 
-    gesture =
-        names[gesture] ||
-        gesture
-            .replaceAll(
-                "_",
-                " "
+    const detected =
+        hands
+            .map(
+                hand =>
+                    hand?.[0]?.categoryName ||
+                    "TRACKING"
             )
-            .toUpperCase();
+            .map(
+                name =>
+                    names[name] ||
+                    name
+            );
 
 
-    /*
-        Small stability filter.
+    setGesture(
+        detected.join(
+            " + "
+        )
+    );
+}
 
-        This stops:
-        VICTORY
-        NONE
-        VICTORY
-        NONE
 
-        from flickering every frame.
-    */
+/* =========================================================
+   SIGN LANGUAGE DISPLAY
+========================================================= */
 
-    if (
-        gesture ===
-        lastGestureName
-    ) {
+function updateSignLanguage() {
 
-        gestureStableFrames++;
+    if (!signDisplay) return;
 
-    } else {
 
-        gestureStableFrames = 0;
+    if (!signLanguage) {
 
-        lastGestureName =
-            gesture;
+        signDisplay.textContent =
+            "SIGN // OFF";
+
+        return;
     }
 
 
-    if (
-        gestureStableFrames >= 1 ||
-        gesture === "NONE"
-    ) {
+    const hands =
+        handResults?.landmarks ||
+        [];
 
-        setGesture(
-            gesture
+
+    if (!hands.length) {
+
+        signDisplay.textContent =
+            "SIGN // WAITING";
+
+        return;
+    }
+
+
+    const signs =
+        hands.map(
+            hand =>
+                getSign(
+                    hand
+                )
         );
-    }
+
+
+    signDisplay.textContent =
+        `SIGN // ${signs.join(" + ")}`;
 }
 
 
@@ -1425,9 +1516,7 @@ function updateGesture() {
    SET GESTURE
 ========================================================= */
 
-function setGesture(
-    value
-) {
+function setGesture(value) {
 
     if (!gestureDisplay) return;
 
@@ -1438,85 +1527,10 @@ function setGesture(
 
 
 /* =========================================================
-   SIGN LANGUAGE DISPLAY
+   NEW GEOMETRY
 ========================================================= */
 
-function updateSignLanguage() {
-
-    if (!signLanguage) return;
-
-
-    const hands =
-        handResults?.landmarks ||
-        [];
-
-
-    if (!hands.length) {
-
-        setSign(
-            "WAITING"
-        );
-
-        return;
-    }
-
-
-    const sign =
-        getSign(
-            hands[0]
-        );
-
-
-    if (
-        sign ===
-        lastSignName
-    ) {
-
-        signStableFrames++;
-
-    } else {
-
-        signStableFrames = 0;
-
-        lastSignName =
-            sign;
-    }
-
-
-    if (
-        signStableFrames >= 1
-    ) {
-
-        setSign(
-            sign
-        );
-    }
-}
-
-
-/* =========================================================
-   SET SIGN
-========================================================= */
-
-function setSign(
-    value
-) {
-
-    if (!signDisplay) return;
-
-
-    signDisplay.textContent =
-        `SIGN // ${value}`;
-}
-
-
-/* =========================================================
-   LANDMARK GEOMETRY
-========================================================= */
-
-function drawHandVFX(
-    timestamp
-) {
+function drawHandVFX(timestamp) {
 
     const hands =
         handResults?.landmarks ||
@@ -1529,56 +1543,46 @@ function drawHandVFX(
             "GEOMETRY // WAITING"
         );
 
-
-        geometryVelocity *= 0.82;
-
-        twistTarget *= 0.85;
-
-        inversionTarget *= 0.85;
-
-        visualEnergyTarget = 0;
-
-
         return;
     }
 
 
-    visualEnergyTarget =
-        0.5;
-
-
-    if (hands.length === 1) {
-
-        drawLandmarkGeometry(
-            hands[0],
-            timestamp
-        );
-
-
-        setShapeStatus(
-            `GEOMETRY // ${GEOMETRY_MODES[geometryMode]}`
-        );
-
-
-        return;
-    }
-
-
-    drawTwoHandGeometry(
-        hands[0],
-        hands[1],
+    checkDoublePinch(
+        hands,
         timestamp
     );
 
 
-    setShapeStatus(
-        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // TWIST ${Math.round(twistAngle)}°`
+    /*
+        TWO HANDS
+    */
+
+    if (hands.length >= 2) {
+
+        drawTwoHandGeometry(
+            hands[0],
+            hands[1],
+            timestamp
+        );
+
+
+        return;
+    }
+
+
+    /*
+        ONE HAND
+    */
+
+    drawLandmarkGeometry(
+        hands[0],
+        timestamp
     );
 }
 
 
 /* =========================================================
-   ONE HAND GEOMETRY
+   ONE HAND
 ========================================================= */
 
 function drawLandmarkGeometry(
@@ -1587,99 +1591,51 @@ function drawLandmarkGeometry(
 ) {
 
     const wrist =
-        smoothPoint(
+        trackedPoint(
             "wrist",
             point(hand[0])
         );
 
 
     const thumb =
-        smoothPoint(
+        trackedPoint(
             "thumb",
             point(hand[4])
         );
 
 
     const index =
-        smoothPoint(
+        trackedPoint(
             "index",
             point(hand[8])
         );
 
 
     const middle =
-        smoothPoint(
+        trackedPoint(
             "middle",
             point(hand[12])
         );
 
 
     const ring =
-        smoothPoint(
+        trackedPoint(
             "ring",
             point(hand[16])
         );
 
 
     const pinky =
-        smoothPoint(
+        trackedPoint(
             "pinky",
             point(hand[20])
         );
 
 
-    const pinchDistance =
-        Math.hypot(
-            hand[8].x -
-            hand[4].x,
-
-            hand[8].y -
-            hand[4].y
+    const pinch =
+        isPinchingFast(
+            hand
         );
-
-
-    const pinchAmount =
-        Math.min(
-            1,
-            pinchDistance /
-            0.22
-        );
-
-
-    /*
-        A one-hand twist is based on the
-        thumb → index direction.
-    */
-
-    const dx =
-        index.x -
-        thumb.x;
-
-
-    const dy =
-        index.y -
-        thumb.y;
-
-
-    const angle =
-        Math.atan2(
-            dy,
-            dx
-        ) *
-        180 /
-        Math.PI;
-
-
-    updateTwist(
-        angle
-    );
-
-
-    ctx.save();
-
-
-    const palette =
-        getVisualPalette();
 
 
     if (
@@ -1691,11 +1647,9 @@ function drawLandmarkGeometry(
             thumb,
             index,
             pinky,
-            pinchAmount,
-            timestamp,
-            palette
+            pinch,
+            timestamp
         );
-
 
     } else if (
         geometryMode === 1
@@ -1706,11 +1660,9 @@ function drawLandmarkGeometry(
             index,
             middle,
             ring,
-            pinchAmount,
-            timestamp,
-            palette
+            pinch,
+            timestamp
         );
-
 
     } else if (
         geometryMode === 2
@@ -1723,11 +1675,9 @@ function drawLandmarkGeometry(
             ring,
             pinky,
             wrist,
-            pinchAmount,
-            timestamp,
-            palette
+            pinch,
+            timestamp
         );
-
 
     } else {
 
@@ -1738,174 +1688,251 @@ function drawLandmarkGeometry(
             middle,
             ring,
             pinky,
-            pinchAmount,
-            timestamp,
-            palette
+            pinch,
+            timestamp
         );
     }
 
 
-    ctx.restore();
+    setShapeStatus(
+        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`
+    );
 }
 
 
 /* =========================================================
-   QUAD WARP
+   TWO HAND QUAD
 ========================================================= */
 
-function drawQuadWarp(
-    p1,
-    p2,
-    p3,
-    p4,
-    pinchAmount,
-    timestamp,
-    palette
+function drawTwoHandGeometry(
+    handA,
+    handB,
+    timestamp
 ) {
 
-    const pulse =
-        1 +
-        Math.sin(
-            timestamp * 0.004
-        ) *
-        0.018;
+    const centerA =
+        getPalmCenter(
+            handA
+        );
+
+
+    const centerB =
+        getPalmCenter(
+            handB
+        );
+
+
+    /*
+        Make A the left hand in screen space.
+    */
+
+    if (
+        centerA.x >
+        centerB.x
+    ) {
+
+        const temp =
+            handA;
+
+        handA =
+            handB;
+
+        handB =
+            temp;
+    }
+
+
+    const leftIndex =
+        trackedPoint(
+            "leftIndex",
+            point(handA[8])
+        );
+
+
+    const leftThumb =
+        trackedPoint(
+            "leftThumb",
+            point(handA[4])
+        );
+
+
+    const rightIndex =
+        trackedPoint(
+            "rightIndex",
+            point(handB[8])
+        );
+
+
+    const rightThumb =
+        trackedPoint(
+            "rightThumb",
+            point(handB[4])
+        );
+
+
+    const leftTop =
+        leftIndex.y <
+        leftThumb.y
+            ? leftIndex
+            : leftThumb;
+
+
+    const leftBottom =
+        leftIndex.y <
+        leftThumb.y
+            ? leftThumb
+            : leftIndex;
+
+
+    const rightTop =
+        rightIndex.y <
+        rightThumb.y
+            ? rightIndex
+            : rightThumb;
+
+
+    const rightBottom =
+        rightIndex.y <
+        rightThumb.y
+            ? rightThumb
+            : rightIndex;
+
+
+    /*
+        This is the main corner-pin surface.
+    */
+
+    const corners = {
+
+        tl: leftTop,
+
+        tr: rightTop,
+
+        br: rightBottom,
+
+        bl: leftBottom
+    };
+
+
+    drawGeometrySurface(
+        corners,
+        timestamp
+    );
+
+
+    setShapeStatus(
+        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`
+    );
+}
+
+
+/* =========================================================
+   MAIN GEOMETRY SURFACE
+========================================================= */
+
+function drawGeometrySurface(
+    q,
+    timestamp
+) {
+
+    const a = q.tl;
+    const b = q.tr;
+    const c = q.br;
+    const d = q.bl;
 
 
     const center =
         averagePoint(
-            p1,
-            p2,
-            p3,
-            p4
-        );
-
-
-    const compression =
-        0.86 +
-        pinchAmount *
-        0.14;
-
-
-    const a =
-        scaleAround(
-            p1,
-            center,
-            compression *
-            pulse
-        );
-
-
-    const b =
-        scaleAround(
-            p2,
-            center,
-            compression *
-            pulse
-        );
-
-
-    const c =
-        scaleAround(
-            p3,
-            center,
-            compression *
-            pulse
-        );
-
-
-    const d =
-        scaleAround(
-            p4,
-            center,
-            compression *
-            pulse
+            a,
+            b,
+            c,
+            d
         );
 
 
     /*
-        Fill.
+        LENGTH
+
+        Average of top and bottom edges.
     */
 
-    ctx.fillStyle =
-        palette.fill;
+    const topLength =
+        distance(
+            a,
+            b
+        );
 
 
-    ctx.beginPath();
+    const bottomLength =
+        distance(
+            d,
+            c
+        );
 
-    ctx.moveTo(
-        a.x,
-        a.y
-    );
 
-    ctx.lineTo(
-        b.x,
-        b.y
-    );
-
-    ctx.lineTo(
-        c.x,
-        c.y
-    );
-
-    ctx.lineTo(
-        d.x,
-        d.y
-    );
-
-    ctx.closePath();
-
-    ctx.fill();
+    const length =
+        (
+            topLength +
+            bottomLength
+        ) / 2;
 
 
     /*
-        Outer geometry.
+        BREADTH
+
+        Average of left and right edges.
     */
 
-    ctx.strokeStyle =
-        palette.primary;
+    const leftBreadth =
+        distance(
+            a,
+            d
+        );
 
 
-    ctx.lineWidth =
-        2.2 +
-        twistNormalized *
-        1.2;
+    const rightBreadth =
+        distance(
+            b,
+            c
+        );
 
 
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-        a.x,
-        a.y
-    );
-
-
-    ctx.lineTo(
-        b.x,
-        b.y
-    );
-
-
-    ctx.lineTo(
-        c.x,
-        c.y
-    );
-
-
-    ctx.lineTo(
-        d.x,
-        d.y
-    );
-
-
-    ctx.closePath();
-
-
-    ctx.stroke();
+    const breadth =
+        (
+            leftBreadth +
+            rightBreadth
+        ) / 2;
 
 
     /*
-        Inner quad.
+        Draw the filter first so the geometry
+        appears to contain its own visual treatment.
+    */
+
+    drawGeometryFilter(
+        a,
+        b,
+        c,
+        d,
+        center,
+        timestamp
+    );
+
+
+    /*
+        OUTER SURFACE
+    */
+
+    drawQuadOutline(
+        a,
+        b,
+        c,
+        d
+    );
+
+
+    /*
+        INNER SURFACE
     */
 
     const inner = [
@@ -1913,84 +1940,159 @@ function drawQuadWarp(
         lerpPoint(
             a,
             center,
-            0.20
+            0.16
         ),
 
         lerpPoint(
             b,
             center,
-            0.20
+            0.16
         ),
 
         lerpPoint(
             c,
             center,
-            0.20
+            0.16
         ),
 
         lerpPoint(
             d,
             center,
-            0.20
+            0.16
         )
     ];
 
 
-    ctx.strokeStyle =
-        palette.secondary;
+    drawQuadOutline(
+        inner[0],
+        inner[1],
+        inner[2],
+        inner[3],
+        0.35
+    );
 
+
+    /*
+        DIAGONALS
+    */
+
+    ctx.save();
+
+    ctx.strokeStyle =
+        getGeometryLineColor(
+            0.22
+        );
 
     ctx.lineWidth = 1;
+
+    ctx.setLineDash([
+        5,
+        7
+    ]);
 
 
     ctx.beginPath();
 
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+    ctx.lineTo(
+        c.x,
+        c.y
+    );
 
     ctx.moveTo(
-        inner[0].x,
-        inner[0].y
+        b.x,
+        b.y
     );
-
 
     ctx.lineTo(
-        inner[1].x,
-        inner[1].y
+        d.x,
+        d.y
     );
-
-
-    ctx.lineTo(
-        inner[2].x,
-        inner[2].y
-    );
-
-
-    ctx.lineTo(
-        inner[3].x,
-        inner[3].y
-    );
-
-
-    ctx.closePath();
-
 
     ctx.stroke();
 
+    ctx.setLineDash([]);
+
+    ctx.restore();
+
+
+    /*
+        GRID
+    */
 
     drawQuadGrid(
         a,
         b,
         c,
-        d,
-        palette
+        d
     );
 
 
     /*
-        Diagonal structure.
+        CORNER ANCHORS
     */
 
+    drawGeometryAnchor(
+        a
+    );
+
+    drawGeometryAnchor(
+        b
+    );
+
+    drawGeometryAnchor(
+        c
+    );
+
+    drawGeometryAnchor(
+        d
+    );
+
+
+    /*
+        MEASUREMENTS
+    */
+
+    drawGeometryMeasurements(
+        a,
+        b,
+        c,
+        d,
+        length,
+        breadth
+    );
+}
+
+
+/* =========================================================
+   QUAD OUTLINE
+========================================================= */
+
+function drawQuadOutline(
+    a,
+    b,
+    c,
+    d,
+    alpha = 0.95
+) {
+
+    ctx.save();
+
+
     ctx.strokeStyle =
-        palette.faint;
+        getGeometryLineColor(
+            alpha
+        );
+
+
+    ctx.lineWidth =
+        geometryFilter === 1
+            ? 2.8
+            : 2.2;
 
 
     ctx.beginPath();
@@ -2003,14 +2105,14 @@ function drawQuadWarp(
 
 
     ctx.lineTo(
-        c.x,
-        c.y
+        b.x,
+        b.y
     );
 
 
-    ctx.moveTo(
-        b.x,
-        b.y
+    ctx.lineTo(
+        c.x,
+        c.y
     );
 
 
@@ -2020,54 +2122,716 @@ function drawQuadWarp(
     );
 
 
+    ctx.closePath();
+
+
     ctx.stroke();
 
 
-    drawGeometryPoint(
+    ctx.restore();
+}
+
+
+/* =========================================================
+   GEOMETRY FILTER
+========================================================= */
+
+function drawGeometryFilter(
+    a,
+    b,
+    c,
+    d,
+    center,
+    timestamp
+) {
+
+    ctx.save();
+
+
+    /*
+        Clip everything to the geometry.
+    */
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+    ctx.lineTo(
+        b.x,
+        b.y
+    );
+
+    ctx.lineTo(
+        c.x,
+        c.y
+    );
+
+    ctx.lineTo(
+        d.x,
+        d.y
+    );
+
+    ctx.closePath();
+
+    ctx.clip();
+
+
+    if (
+        geometryFilter === 0
+    ) {
+
+        /*
+            Normal subtle glass surface.
+        */
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.035)";
+
+        ctx.fill();
+
+
+    } else if (
+        geometryFilter === 1
+    ) {
+
+        /*
+            INVERT
+
+            Difference mode makes the
+            geometry invert the camera beneath it.
+        */
+
+        ctx.globalCompositeOperation =
+            "difference";
+
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.95)";
+
+
+        ctx.fillRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+
+    } else if (
+        geometryFilter === 2
+    ) {
+
+        /*
+            CYBER
+        */
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.055)";
+
+        ctx.fill();
+
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.25)";
+
+        ctx.lineWidth = 1;
+
+
+        for (
+            let i = -10;
+            i < canvas.width + 100;
+            i += 18
+        ) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                i,
+                0
+            );
+
+            ctx.lineTo(
+                i + canvas.height,
+                canvas.height
+            );
+
+            ctx.stroke();
+        }
+
+
+    } else if (
+        geometryFilter === 3
+    ) {
+
+        /*
+            BLUEPRINT / TECH GRID
+        */
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.025)";
+
+        ctx.fill();
+
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.18)";
+
+        ctx.lineWidth = 1;
+
+
+        for (
+            let x = 0;
+            x < canvas.width;
+            x += 20
+        ) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                x,
+                0
+            );
+
+            ctx.lineTo(
+                x,
+                canvas.height
+            );
+
+            ctx.stroke();
+        }
+
+
+        for (
+            let y = 0;
+            y < canvas.height;
+            y += 20
+        ) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                0,
+                y
+            );
+
+            ctx.lineTo(
+                canvas.width,
+                y
+            );
+
+            ctx.stroke();
+        }
+
+
+    } else {
+
+        /*
+            HIGH CONTRAST
+        */
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.11)";
+
+        ctx.fill();
+
+
+        ctx.strokeStyle =
+            "rgba(0,0,0,0.7)";
+
+        ctx.lineWidth = 3;
+
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            a.x,
+            a.y
+        );
+
+        ctx.lineTo(
+            c.x,
+            c.y
+        );
+
+        ctx.moveTo(
+            b.x,
+            b.y
+        );
+
+        ctx.lineTo(
+            d.x,
+            d.y
+        );
+
+        ctx.stroke();
+    }
+
+
+    /*
+        Moving scan line.
+    */
+
+    const scan =
+        (
+            timestamp * 0.00025
+        ) % 1;
+
+
+    const left =
+        lerpPoint(
+            a,
+            d,
+            scan
+        );
+
+
+    const right =
+        lerpPoint(
+            b,
+            c,
+            scan
+        );
+
+
+    ctx.globalCompositeOperation =
+        geometryFilter === 1
+            ? "difference"
+            : "source-over";
+
+
+    ctx.strokeStyle =
+        geometryFilter === 1
+            ? "rgba(255,255,255,0.75)"
+            : "rgba(255,255,255,0.32)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        left.x,
+        left.y
+    );
+
+    ctx.lineTo(
+        right.x,
+        right.y
+    );
+
+    ctx.stroke();
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   MEASUREMENTS
+========================================================= */
+
+function drawGeometryMeasurements(
+    a,
+    b,
+    c,
+    d,
+    length,
+    breadth
+) {
+
+    /*
+        Put the measurement above the top edge.
+
+        This is intentionally not just a tiny number.
+        It has a proper technical HUD treatment.
+    */
+
+    const topMid =
+        lerpPoint(
+            a,
+            b,
+            0.5
+        );
+
+
+    const topAngle =
+        Math.atan2(
+            b.y - a.y,
+            b.x - a.x
+        );
+
+
+    /*
+        Perpendicular vector pointing upward.
+    */
+
+    let nx =
+        Math.sin(
+            topAngle
+        );
+
+
+    let ny =
+        -Math.cos(
+            topAngle
+        );
+
+
+    /*
+        Make sure it generally points upward.
+    */
+
+    if (ny > 0) {
+
+        nx *= -1;
+        ny *= -1;
+    }
+
+
+    const offset = 26;
+
+
+    const labelX =
+        topMid.x +
+        nx *
+        offset;
+
+
+    const labelY =
+        topMid.y +
+        ny *
+        offset;
+
+
+    ctx.save();
+
+
+    /*
+        Measurement line.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.58)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.setLineDash([
+        4,
+        5
+    ]);
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+
+    ctx.lineTo(
+        b.x,
+        b.y
+    );
+
+
+    ctx.stroke();
+
+
+    ctx.setLineDash([]);
+
+
+    /*
+        Tiny end caps.
+    */
+
+    drawMeasurementTick(
         a,
-        palette
+        topAngle
     );
 
-    drawGeometryPoint(
+
+    drawMeasurementTick(
         b,
-        palette
-    );
-
-    drawGeometryPoint(
-        c,
-        palette
-    );
-
-    drawGeometryPoint(
-        d,
-        palette
+        topAngle
     );
 
 
     /*
-        Animated scan line.
+        Dimension text.
     */
 
-    drawQuadScanLine(
-        a,
-        b,
-        c,
-        d,
-        timestamp,
-        palette
+    const lengthText =
+        `L ${formatDimension(length)}`;
+
+
+    const breadthText =
+        `B ${formatDimension(breadth)}`;
+
+
+    const text =
+        `${lengthText}  ×  ${breadthText}`;
+
+
+    ctx.font =
+        "bold 11px monospace";
+
+
+    const metrics =
+        ctx.measureText(
+            text
+        );
+
+
+    const paddingX = 10;
+
+    const paddingY = 6;
+
+
+    const boxWidth =
+        metrics.width +
+        paddingX * 2;
+
+
+    const boxHeight =
+        20 +
+        paddingY;
+
+
+    const boxX =
+        labelX -
+        boxWidth / 2;
+
+
+    const boxY =
+        labelY -
+        boxHeight;
+
+
+    /*
+        Small technical connector.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.35)";
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        topMid.x,
+        topMid.y
+    );
+
+
+    ctx.lineTo(
+        labelX,
+        labelY
+    );
+
+
+    ctx.stroke();
+
+
+    /*
+        HUD background.
+    */
+
+    ctx.fillStyle =
+        "rgba(0,0,0,0.72)";
+
+
+    ctx.fillRect(
+        boxX,
+        boxY,
+        boxWidth,
+        boxHeight
     );
 
 
     /*
-        Measurement HUD.
+        HUD border.
     */
 
-    drawGeometryMeasurements(
-        a,
-        b,
-        c,
-        d,
-        palette
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.75)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.strokeRect(
+        boxX,
+        boxY,
+        boxWidth,
+        boxHeight
+    );
+
+
+    /*
+        Small side marks.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.9)";
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        boxX,
+        boxY
+    );
+
+
+    ctx.lineTo(
+        boxX + 7,
+        boxY
+    );
+
+
+    ctx.moveTo(
+        boxX,
+        boxY
+    );
+
+
+    ctx.lineTo(
+        boxX,
+        boxY + 7
+    );
+
+
+    ctx.moveTo(
+        boxX + boxWidth,
+        boxY + boxHeight
+    );
+
+
+    ctx.lineTo(
+        boxX + boxWidth - 7,
+        boxY + boxHeight
+    );
+
+
+    ctx.moveTo(
+        boxX + boxWidth,
+        boxY + boxHeight
+    );
+
+
+    ctx.lineTo(
+        boxX + boxWidth,
+        boxY + boxHeight - 7
+    );
+
+
+    ctx.stroke();
+
+
+    /*
+        Main text.
+    */
+
+    ctx.fillStyle =
+        "#ffffff";
+
+
+    ctx.textAlign =
+        "center";
+
+
+    ctx.textBaseline =
+        "middle";
+
+
+    ctx.fillText(
+        text,
+        labelX,
+        boxY +
+        boxHeight / 2
+    );
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   MEASUREMENT TICK
+========================================================= */
+
+function drawMeasurementTick(
+    p,
+    angle
+) {
+
+    const size = 5;
+
+
+    const nx =
+        Math.sin(
+            angle
+        );
+
+
+    const ny =
+        -Math.cos(
+            angle
+        );
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        p.x - nx * size,
+        p.y - ny * size
+    );
+
+
+    ctx.lineTo(
+        p.x + nx * size,
+        p.y + ny * size
+    );
+
+
+    ctx.stroke();
+}
+
+
+/* =========================================================
+   DIMENSION FORMAT
+========================================================= */
+
+function formatDimension(
+    value
+) {
+
+    /*
+        Convert pixels into a clean HUD
+        value instead of dumping decimals.
+    */
+
+    if (
+        value < 10
+    ) {
+
+        return value.toFixed(1);
+    }
+
+
+    return Math.round(
+        value
     );
 }
 
@@ -2080,28 +2844,29 @@ function drawQuadGrid(
     a,
     b,
     c,
-    d,
-    palette
+    d
 ) {
 
     ctx.save();
 
 
     ctx.strokeStyle =
-        palette.faint;
+        getGeometryLineColor(
+            0.16
+        );
 
 
-    ctx.lineWidth = 0.8;
+    ctx.lineWidth = 1;
 
 
     for (
         let i = 1;
-        i < 4;
+        i < 5;
         i++
     ) {
 
         const t =
-            i / 4;
+            i / 5;
 
 
         const left =
@@ -2141,12 +2906,12 @@ function drawQuadGrid(
 
     for (
         let i = 1;
-        i < 4;
+        i < 5;
         i++
     ) {
 
         const t =
-            i / 4;
+            i / 5;
 
 
         const top =
@@ -2189,69 +2954,136 @@ function drawQuadGrid(
 
 
 /* =========================================================
-   QUAD SCAN LINE
+   GEOMETRY COLOR
 ========================================================= */
 
-function drawQuadScanLine(
-    a,
-    b,
-    c,
-    d,
-    timestamp,
-    palette
+function getGeometryLineColor(
+    alpha
 ) {
 
-    const t =
-        (
-            timestamp *
-            0.00045
-        ) % 1;
+    if (
+        geometryFilter === 1
+    ) {
+
+        return `rgba(255,255,255,${alpha})`;
+    }
 
 
-    const left =
-        lerpPoint(
-            a,
-            d,
-            t
-        );
+    if (
+        geometryFilter === 2
+    ) {
+
+        return `rgba(150,220,255,${alpha})`;
+    }
 
 
-    const right =
-        lerpPoint(
-            b,
-            c,
-            t
-        );
+    if (
+        geometryFilter === 3
+    ) {
+
+        return `rgba(190,220,255,${alpha})`;
+    }
+
+
+    if (
+        geometryFilter === 4
+    ) {
+
+        return `rgba(255,255,255,${alpha})`;
+    }
+
+
+    return `rgba(255,255,255,${alpha})`;
+}
+
+
+/* =========================================================
+   GEOMETRY ANCHOR
+========================================================= */
+
+function drawGeometryAnchor(
+    p
+) {
+
+    const s = 5;
 
 
     ctx.save();
 
 
     ctx.strokeStyle =
-        palette.primary;
+        getGeometryLineColor(
+            0.9
+        );
 
 
-    ctx.globalAlpha =
-        0.28;
+    ctx.lineWidth = 1.5;
 
 
-    ctx.lineWidth =
-        1 +
-        twistNormalized;
+    /*
+        Square anchor instead of a circle.
+    */
 
+    ctx.strokeRect(
+        p.x - s,
+        p.y - s,
+        s * 2,
+        s * 2
+    );
+
+
+    /*
+        Crosshair.
+    */
 
     ctx.beginPath();
 
 
     ctx.moveTo(
-        left.x,
-        left.y
+        p.x - 9,
+        p.y
     );
 
 
     ctx.lineTo(
-        right.x,
-        right.y
+        p.x - 6,
+        p.y
+    );
+
+
+    ctx.moveTo(
+        p.x + 6,
+        p.y
+    );
+
+
+    ctx.lineTo(
+        p.x + 9,
+        p.y
+    );
+
+
+    ctx.moveTo(
+        p.x,
+        p.y - 9
+    );
+
+
+    ctx.lineTo(
+        p.x,
+        p.y - 6
+    );
+
+
+    ctx.moveTo(
+        p.x,
+        p.y + 6
+    );
+
+
+    ctx.lineTo(
+        p.x,
+        p.y + 9
     );
 
 
@@ -2271,9 +3103,8 @@ function drawLandmarkDiamond(
     index,
     middle,
     ring,
-    pinchAmount,
-    timestamp,
-    palette
+    pinch,
+    timestamp
 ) {
 
     const points = [
@@ -2292,9 +3123,9 @@ function drawLandmarkDiamond(
 
 
     const compression =
-        0.82 +
-        pinchAmount *
-        0.18;
+        pinch
+            ? 0.88
+            : 1;
 
 
     const warped =
@@ -2308,54 +3139,31 @@ function drawLandmarkDiamond(
         );
 
 
-    ctx.fillStyle =
-        palette.fill;
-
-
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-        warped[0].x,
-        warped[0].y
+    drawGeometryFilter(
+        warped[0],
+        warped[1],
+        warped[2],
+        warped[3],
+        center,
+        timestamp
     );
 
 
-    for (
-        let i = 1;
-        i < warped.length;
-        i++
-    ) {
+    drawQuadOutline(
+        warped[0],
+        warped[1],
+        warped[2],
+        warped[3]
+    );
 
-        ctx.lineTo(
-            warped[i].x,
-            warped[i].y
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        getGeometryLineColor(
+            0.3
         );
-    }
-
-
-    ctx.closePath();
-
-    ctx.fill();
-
-
-    ctx.strokeStyle =
-        palette.primary;
-
-
-    ctx.lineWidth =
-        2.2 +
-        twistNormalized;
-
-
-    ctx.stroke();
-
-
-    ctx.strokeStyle =
-        palette.secondary;
-
-
-    ctx.lineWidth = 1;
 
 
     ctx.beginPath();
@@ -2388,25 +3196,18 @@ function drawLandmarkDiamond(
     ctx.stroke();
 
 
+    ctx.restore();
+
+
     for (
         const p
         of warped
     ) {
 
-        drawGeometryPoint(
-            p,
-            palette
+        drawGeometryAnchor(
+            p
         );
     }
-
-
-    drawGeometryMeasurements(
-        warped[0],
-        warped[1],
-        warped[2],
-        warped[3],
-        palette
-    );
 }
 
 
@@ -2421,9 +3222,8 @@ function drawLandmarkShard(
     ring,
     pinky,
     wrist,
-    pinchAmount,
-    timestamp,
-    palette
+    pinch,
+    timestamp
 ) {
 
     const points = [
@@ -2444,9 +3244,9 @@ function drawLandmarkShard(
 
 
     const compression =
-        0.84 +
-        pinchAmount *
-        0.16;
+        pinch
+            ? 0.88
+            : 1;
 
 
     const warped =
@@ -2460,8 +3260,20 @@ function drawLandmarkShard(
         );
 
 
-    ctx.fillStyle =
-        palette.fill;
+    /*
+        Draw connected angular surface.
+    */
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        getGeometryLineColor(
+            0.9
+        );
+
+
+    ctx.lineWidth = 2;
 
 
     ctx.beginPath();
@@ -2488,23 +3300,18 @@ function drawLandmarkShard(
 
     ctx.closePath();
 
-    ctx.fill();
-
-
-    ctx.strokeStyle =
-        palette.primary;
-
-
-    ctx.lineWidth =
-        2.2 +
-        twistNormalized;
-
 
     ctx.stroke();
 
 
+    /*
+        Internal structure.
+    */
+
     ctx.strokeStyle =
-        palette.faint;
+        getGeometryLineColor(
+            0.25
+        );
 
 
     ctx.lineWidth = 1;
@@ -2544,32 +3351,18 @@ function drawLandmarkShard(
     }
 
 
+    ctx.restore();
+
+
     for (
         const p
         of warped
     ) {
 
-        drawGeometryPoint(
-            p,
-            palette
+        drawGeometryAnchor(
+            p
         );
     }
-
-
-    const bounds =
-        getBounds(
-            warped
-        );
-
-
-    drawDimensionLabel(
-        center.x,
-        bounds.minY,
-        bounds.width,
-        bounds.height,
-        0,
-        palette
-    );
 }
 
 
@@ -2584,88 +3377,57 @@ function drawLandmarkFrame(
     middle,
     ring,
     pinky,
-    pinchAmount,
-    timestamp,
-    palette
+    pinch,
+    timestamp
 ) {
 
-    const points = [
+    const a =
+        thumb;
 
-        thumb,
-        index,
-        middle,
-        wrist
-    ];
+    const b =
+        index;
+
+    const c =
+        middle;
+
+    const d =
+        wrist;
 
 
     const center =
         averagePoint(
-            ...points
+            a,
+            b,
+            c,
+            d
         );
 
 
-    const compression =
-        0.84 +
-        pinchAmount *
-        0.16;
-
-
-    const warped =
-        points.map(
-            p =>
-                scaleAround(
-                    p,
-                    center,
-                    compression
-                )
-        );
-
-
-    ctx.fillStyle =
-        palette.fill;
-
-
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-        warped[0].x,
-        warped[0].y
+    drawGeometryFilter(
+        a,
+        b,
+        c,
+        d,
+        center,
+        timestamp
     );
 
 
-    for (
-        let i = 1;
-        i < warped.length;
-        i++
-    ) {
+    drawQuadOutline(
+        a,
+        b,
+        c,
+        d
+    );
 
-        ctx.lineTo(
-            warped[i].x,
-            warped[i].y
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        getGeometryLineColor(
+            0.3
         );
-    }
-
-
-    ctx.closePath();
-
-    ctx.fill();
-
-
-    ctx.strokeStyle =
-        palette.primary;
-
-
-    ctx.lineWidth =
-        2.2 +
-        twistNormalized;
-
-
-    ctx.stroke();
-
-
-    ctx.strokeStyle =
-        palette.secondary;
 
 
     ctx.lineWidth = 1;
@@ -2675,26 +3437,26 @@ function drawLandmarkFrame(
 
 
     ctx.moveTo(
-        warped[0].x,
-        warped[0].y
+        a.x,
+        a.y
     );
 
 
     ctx.lineTo(
-        warped[2].x,
-        warped[2].y
+        c.x,
+        c.y
     );
 
 
     ctx.moveTo(
-        warped[1].x,
-        warped[1].y
+        b.x,
+        b.y
     );
 
 
     ctx.lineTo(
-        warped[3].x,
-        warped[3].y
+        d.x,
+        d.y
     );
 
 
@@ -2725,1531 +3487,227 @@ function drawLandmarkFrame(
     ctx.stroke();
 
 
+    ctx.restore();
+
+
     for (
         const p
         of [
-            ...warped,
+            a,
+            b,
+            c,
+            d,
             ring,
             pinky
         ]
     ) {
 
-        drawGeometryPoint(
-            p,
-            palette
+        drawGeometryAnchor(
+            p
         );
-    }
-
-
-    drawGeometryMeasurements(
-        warped[0],
-        warped[1],
-        warped[2],
-        warped[3],
-        palette
-    );
-}
-
-
-/* =========================================================
-   TWO HAND GEOMETRY
-========================================================= */
-
-function drawTwoHandGeometry(
-    handA,
-    handB,
-    timestamp
-) {
-
-    const centerA =
-        getPalmCenter(
-            handA
-        );
-
-
-    const centerB =
-        getPalmCenter(
-            handB
-        );
-
-
-    /*
-        Sort hands spatially.
-
-        A is always left.
-        B is always right.
-    */
-
-    let leftHand =
-        handA;
-
-
-    let rightHand =
-        handB;
-
-
-    if (
-        centerA.x >
-        centerB.x
-    ) {
-
-        leftHand =
-            handB;
-
-
-        rightHand =
-            handA;
-    }
-
-
-    const leftIndex =
-        smoothPoint(
-            "LEFT_INDEX",
-            point(
-                leftHand[8]
-            )
-        );
-
-
-    const leftThumb =
-        smoothPoint(
-            "LEFT_THUMB",
-            point(
-                leftHand[4]
-            )
-        );
-
-
-    const leftPinky =
-        smoothPoint(
-            "LEFT_PINKY",
-            point(
-                leftHand[20]
-            )
-        );
-
-
-    const rightIndex =
-        smoothPoint(
-            "RIGHT_INDEX",
-            point(
-                rightHand[8]
-            )
-        );
-
-
-    const rightThumb =
-        smoothPoint(
-            "RIGHT_THUMB",
-            point(
-                rightHand[4]
-            )
-        );
-
-
-    const rightPinky =
-        smoothPoint(
-            "RIGHT_PINKY",
-            point(
-                rightHand[20]
-            )
-        );
-
-
-    /*
-        Decide which finger is top/bottom
-        for each hand.
-
-        This makes the quad remain stable
-        even when the hands rotate.
-    */
-
-    const leftPair =
-        getVerticalPair(
-            leftIndex,
-            leftThumb
-        );
-
-
-    const rightPair =
-        getVerticalPair(
-            rightIndex,
-            rightThumb
-        );
-
-
-    const topLeft =
-        leftPair.top;
-
-
-    const bottomLeft =
-        leftPair.bottom;
-
-
-    const topRight =
-        rightPair.top;
-
-
-    const bottomRight =
-        rightPair.bottom;
-
-
-    /*
-        Calculate twist from the two
-        vertical hand edges.
-
-        This is much more stable than simply
-        using screen rotation.
-    */
-
-    const leftAngle =
-        Math.atan2(
-            bottomLeft.y -
-            topLeft.y,
-
-            bottomLeft.x -
-            topLeft.x
-        ) *
-        180 /
-        Math.PI;
-
-
-    const rightAngle =
-        Math.atan2(
-            bottomRight.y -
-            topRight.y,
-
-            bottomRight.x -
-            topRight.x
-        ) *
-        180 /
-        Math.PI;
-
-
-    let combinedAngle =
-        (
-            leftAngle +
-            rightAngle
-        ) / 2;
-
-
-    /*
-        Also use the overall top edge angle.
-    */
-
-    const topEdgeAngle =
-        Math.atan2(
-            topRight.y -
-            topLeft.y,
-
-            topRight.x -
-            topLeft.x
-        ) *
-        180 /
-        Math.PI;
-
-
-    combinedAngle =
-        combinedAngle *
-        0.7 +
-        topEdgeAngle *
-        0.3;
-
-
-    updateTwist(
-        combinedAngle
-    );
-
-
-    const palette =
-        getVisualPalette();
-
-
-    ctx.save();
-
-
-    if (
-        geometryMode === 0
-    ) {
-
-        drawQuadWarp(
-            topLeft,
-            topRight,
-            bottomRight,
-            bottomLeft,
-            1,
-            timestamp,
-            palette
-        );
-
-
-    } else if (
-        geometryMode === 1
-    ) {
-
-        drawLandmarkDiamond(
-            leftThumb,
-            rightIndex,
-            rightThumb,
-            leftIndex,
-            1,
-            timestamp,
-            palette
-        );
-
-
-    } else if (
-        geometryMode === 2
-    ) {
-
-        drawLandmarkShard(
-            leftThumb,
-            rightIndex,
-            rightThumb,
-            rightPinky,
-            leftPinky,
-            leftIndex,
-            1,
-            timestamp,
-            palette
-        );
-
-
-    } else {
-
-        drawLandmarkFrame(
-            leftThumb,
-            rightThumb,
-            rightIndex,
-            rightPinky,
-            leftPinky,
-            leftIndex,
-            1,
-            timestamp,
-            palette
-        );
-    }
-
-
-    /*
-        Structural connection.
-    */
-
-    ctx.strokeStyle =
-        palette.faint;
-
-
-    ctx.lineWidth = 1;
-
-
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-        leftPinky.x,
-        leftPinky.y
-    );
-
-
-    ctx.lineTo(
-        rightPinky.x,
-        rightPinky.y
-    );
-
-
-    ctx.stroke();
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   VERTICAL PAIR
-========================================================= */
-
-function getVerticalPair(
-    a,
-    b
-) {
-
-    if (
-        a.y <
-        b.y
-    ) {
-
-        return {
-            top: a,
-            bottom: b
-        };
-    }
-
-
-    return {
-        top: b,
-        bottom: a
-    };
-}
-
-
-/* =========================================================
-   TWIST DETECTION
-========================================================= */
-
-function updateTwist(
-    angle
-) {
-
-    /*
-        Normalize angle to -180 → 180.
-    */
-
-    while (
-        angle > 180
-    ) {
-
-        angle -= 360;
-    }
-
-
-    while (
-        angle < -180
-    ) {
-
-        angle += 360;
-    }
-
-
-    /*
-        Smooth the angle itself.
-
-        Handles crossing -180 / 180.
-    */
-
-    let delta =
-        angle -
-        previousTwistAngle;
-
-
-    if (
-        delta > 180
-    ) {
-
-        delta -= 360;
-    }
-
-
-    if (
-        delta < -180
-    ) {
-
-        delta += 360;
-    }
-
-
-    twistAngle +=
-        delta *
-        0.28;
-
-
-    previousTwistAngle =
-        angle;
-
-
-    /*
-        Twist intensity.
-
-        0° = normal.
-        Around 90° = strong.
-        180° = maximum.
-    */
-
-    const absolute =
-        Math.min(
-            180,
-            Math.abs(
-                twistAngle
-            )
-        );
-
-
-    twistTarget =
-        absolute /
-        180;
-
-
-    twistNormalized +=
-        (
-            twistTarget -
-            twistNormalized
-        ) *
-        0.16;
-
-
-    /*
-        Inversion begins around 35°.
-    */
-
-    inversionTarget =
-        smoothStep(
-            0.20,
-            0.82,
-            twistNormalized
-        );
-
-
-    inversionAmount +=
-        (
-            inversionTarget -
-            inversionAmount
-        ) *
-        0.12;
-
-
-    visualEnergyTarget =
-        0.35 +
-        twistNormalized *
-        0.65;
-
-
-    visualEnergy +=
-        (
-            visualEnergyTarget -
-            visualEnergy
-        ) *
-        0.14;
-
-
-    updateTwistFilter();
-}
-
-
-/* =========================================================
-   TWIST FILTER
-========================================================= */
-
-function updateTwistFilter() {
-
-    if (
-        fpsBoost
-    ) {
-
-        return;
-    }
-
-
-    let nextFilter =
-        "NORMAL";
-
-
-    if (
-        twistNormalized <
-        0.20
-    ) {
-
-        nextFilter =
-            "NORMAL";
-
-    } else if (
-        twistNormalized <
-        0.42
-    ) {
-
-        nextFilter =
-            "CYBER";
-
-    } else if (
-        twistNormalized <
-        0.68
-    ) {
-
-        nextFilter =
-            "SCAN";
-
-    } else {
-
-        nextFilter =
-            "INVERT";
-    }
-
-
-    twistFilterName =
-        nextFilter;
-
-
-    /*
-        Once the user starts twisting,
-        geometry controls the face filter.
-
-        When the twist comes back down,
-        the manually selected filter remains.
-    */
-
-    if (
-        twistNormalized >
-        0.16
-    ) {
-
-        automaticTwistFilter =
-            true;
-
-
-        if (
-            nextFilter ===
-            "INVERT"
-        ) {
-
-            /*
-                Keep the face filter itself on CYBER
-                while the entire visual layer gets
-                the stronger inversion.
-            */
-
-            faceFilter =
-                "CYBER";
-
-        } else if (
-            nextFilter !==
-            "NORMAL"
-        ) {
-
-            faceFilter =
-                nextFilter;
-        }
-
-
-        if (filterBtn) {
-
-            filterBtn.textContent =
-                `FILTER // TWIST ${nextFilter}`;
-        }
-
-
-        if (
-            (
-                nextFilter ===
-                "CYBER" ||
-                nextFilter ===
-                "SCAN"
-            ) &&
-            !faceDetector
-        ) {
-
-            loadFaceDetector();
-        }
-
-
-    } else if (
-        automaticTwistFilter
-    ) {
-
-        automaticTwistFilter =
-            false;
-
-
-        if (filterBtn) {
-
-            filterBtn.textContent =
-                `FILTER ${faceFilter}`;
-        }
     }
 }
 
 
 /* =========================================================
-   VISUAL PALETTE
+   FAST TRACKED POINT
 ========================================================= */
 
-function getVisualPalette() {
-
-    const t =
-        inversionAmount;
-
-
-    /*
-        Normal SPECTRA:
-        white geometry on dark camera.
-
-        Twist:
-        moves toward a black/white difference
-        treatment.
-    */
-
-    const primaryAlpha =
-        0.78 +
-        visualEnergy *
-        0.22;
-
-
-    const secondaryAlpha =
-        0.28 +
-        visualEnergy *
-        0.32;
-
-
-    const faintAlpha =
-        0.10 +
-        visualEnergy *
-        0.18;
-
-
-    /*
-        Keep the actual geometry monochrome.
-
-        The inversion effect is handled separately
-        using difference blending.
-    */
-
-    return {
-
-        primary:
-            `rgba(255,255,255,${primaryAlpha})`,
-
-        secondary:
-            `rgba(255,255,255,${secondaryAlpha})`,
-
-        faint:
-            `rgba(255,255,255,${faintAlpha})`,
-
-        fill:
-            `rgba(255,255,255,${0.025 + visualEnergy * 0.035})`,
-
-        measurement:
-            `rgba(255,255,255,${0.72 + visualEnergy * 0.2})`,
-
-        inversion:
-            t
-    };
-}
-
-
-/* =========================================================
-   TWIST INVERSION
-========================================================= */
-
-function drawTwistInversion() {
-
-    if (
-        inversionAmount <
-        0.01
-    ) {
-
-        return;
-    }
-
-
-    /*
-        Canvas difference blending:
-
-        white - pixel = inverted pixel.
-
-        Lower alpha gives a softer transition
-        instead of an instant hard inversion.
-    */
-
-    ctx.save();
-
-
-    ctx.globalCompositeOperation =
-        "difference";
-
-
-    ctx.globalAlpha =
-        inversionAmount *
-        0.78;
-
-
-    ctx.fillStyle =
-        "#ffffff";
-
-
-    ctx.fillRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-
-    ctx.restore();
-
-
-    /*
-        Small technical indicator.
-    */
-
-    drawTwistIndicator();
-}
-
-
-/* =========================================================
-   TWIST INDICATOR
-========================================================= */
-
-function drawTwistIndicator() {
-
-    const x =
-        canvas.width -
-        150;
-
-
-    const y =
-        24;
-
-
-    ctx.save();
-
-
-    ctx.font =
-        "10px monospace";
-
-
-    ctx.textAlign =
-        "right";
-
-
-    ctx.fillStyle =
-        `rgba(255,255,255,${0.45 + inversionAmount * 0.4})`;
-
-
-    ctx.fillText(
-        `TWIST ${Math.round(Math.abs(twistAngle))}°`,
-        x,
-        y
-    );
-
-
-    ctx.fillText(
-        `FILTER ${twistFilterName}`,
-        x,
-        y + 14
-    );
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   GEOMETRY MEASUREMENTS
-========================================================= */
-
-function drawGeometryMeasurements(
-    topLeft,
-    topRight,
-    bottomRight,
-    bottomLeft,
-    palette
-) {
-
-    /*
-        Width:
-        average of top and bottom edges.
-
-        Height:
-        average of left and right edges.
-    */
-
-    const topWidth =
-        distance(
-            topLeft,
-            topRight
-        );
-
-
-    const bottomWidth =
-        distance(
-            bottomLeft,
-            bottomRight
-        );
-
-
-    const leftHeight =
-        distance(
-            topLeft,
-            bottomLeft
-        );
-
-
-    const rightHeight =
-        distance(
-            topRight,
-            bottomRight
-        );
-
-
-    const width =
-        (
-            topWidth +
-            bottomWidth
-        ) / 2;
-
-
-    const height =
-        (
-            leftHeight +
-            rightHeight
-        ) / 2;
-
-
-    displayedWidth +=
-        (
-            width -
-            displayedWidth
-        ) *
-        0.18;
-
-
-    displayedHeight +=
-        (
-            height -
-            displayedHeight
-        ) *
-        0.18;
-
-
-    const topMid =
-        lerpPoint(
-            topLeft,
-            topRight,
-            0.5
-        );
-
-
-    const topDx =
-        topRight.x -
-        topLeft.x;
-
-
-    const topDy =
-        topRight.y -
-        topLeft.y;
-
-
-    const topLength =
-        Math.hypot(
-            topDx,
-            topDy
-        ) || 1;
-
-
-    /*
-        Normal pointing above the top edge.
-    */
-
-    let nx =
-        topDy /
-        topLength;
-
-
-    let ny =
-        -topDx /
-        topLength;
-
-
-    /*
-        Push label away from the shape.
-    */
-
-    const offset =
-        18 +
-        Math.min(
-            20,
-            displayedHeight *
-            0.05
-        );
-
-
-    const labelX =
-        topMid.x +
-        nx *
-        offset;
-
-
-    const labelY =
-        topMid.y +
-        ny *
-        offset;
-
-
-    const angle =
-        Math.atan2(
-            topDy,
-            topDx
-        );
-
-
-    drawDimensionLabel(
-        labelX,
-        labelY,
-        displayedWidth,
-        displayedHeight,
-        angle,
-        palette
-    );
-
-
-    /*
-        Measurement line over the top edge.
-    */
-
-    drawMeasurementTicks(
-        topLeft,
-        topRight,
-        palette
-    );
-}
-
-
-/* =========================================================
-   DIMENSION LABEL
-========================================================= */
-
-function drawDimensionLabel(
-    x,
-    y,
-    width,
-    height,
-    angle,
-    palette
-) {
-
-    const safeWidth =
-        Math.max(
-            1,
-            Math.round(
-                width
-            )
-        );
-
-
-    const safeHeight =
-        Math.max(
-            1,
-            Math.round(
-                height
-            )
-        );
-
-
-    const text =
-        `${safeWidth} PX  ×  ${safeHeight} PX`;
-
-
-    const subText =
-        "GEOMETRY DIMENSION";
-
-
-    ctx.save();
-
-
-    ctx.translate(
-        x,
-        y
-    );
-
-
-    /*
-        Keep the HUD readable.
-
-        Don't allow the label to become upside-down.
-    */
-
-    let displayAngle =
-        angle;
-
-
-    if (
-        displayAngle >
-        Math.PI / 2
-    ) {
-
-        displayAngle -=
-            Math.PI;
-
-    } else if (
-        displayAngle <
-        -Math.PI / 2
-    ) {
-
-        displayAngle +=
-            Math.PI;
-    }
-
-
-    ctx.rotate(
-        displayAngle
-    );
-
-
-    ctx.textAlign =
-        "center";
-
-
-    ctx.textBaseline =
-        "middle";
-
-
-    ctx.font =
-        "bold 11px monospace";
-
-
-    const mainWidth =
-        ctx.measureText(
-            text
-        ).width;
-
-
-    const boxWidth =
-        mainWidth +
-        24;
-
-
-    const boxHeight =
-        28;
-
-
-    /*
-        Small technical HUD plate.
-    */
-
-    ctx.fillStyle =
-        "rgba(0,0,0,0.42)";
-
-
-    ctx.fillRect(
-        -boxWidth / 2,
-        -boxHeight / 2,
-        boxWidth,
-        boxHeight
-    );
-
-
-    ctx.strokeStyle =
-        palette.measurement;
-
-
-    ctx.lineWidth = 1;
-
-
-    ctx.strokeRect(
-        -boxWidth / 2,
-        -boxHeight / 2,
-        boxWidth,
-        boxHeight
-    );
-
-
-    /*
-        Main dimensions.
-    */
-
-    ctx.fillStyle =
-        palette.measurement;
-
-
-    ctx.fillText(
-        text,
-        0,
-        -2
-    );
-
-
-    /*
-        Tiny subtitle.
-    */
-
-    ctx.globalAlpha =
-        0.55;
-
-
-    ctx.font =
-        "7px monospace";
-
-
-    ctx.fillText(
-        subText,
-        0,
-        10
-    );
-
-
-    /*
-        Corner marks.
-    */
-
-    ctx.globalAlpha =
-        0.9;
-
-
-    const s = 5;
-
-
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-        -boxWidth / 2,
-        -boxHeight / 2 + s
-    );
-
-
-    ctx.lineTo(
-        -boxWidth / 2,
-        -boxHeight / 2
-    );
-
-
-    ctx.lineTo(
-        -boxWidth / 2 + s,
-        -boxHeight / 2
-    );
-
-
-    ctx.moveTo(
-        boxWidth / 2 - s,
-        -boxHeight / 2
-    );
-
-
-    ctx.lineTo(
-        boxWidth / 2,
-        -boxHeight / 2
-    );
-
-
-    ctx.lineTo(
-        boxWidth / 2,
-        -boxHeight / 2 + s
-    );
-
-
-    ctx.stroke();
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   MEASUREMENT TICKS
-========================================================= */
-
-function drawMeasurementTicks(
-    a,
-    b,
-    palette
-) {
-
-    const dx =
-        b.x -
-        a.x;
-
-
-    const dy =
-        b.y -
-        a.y;
-
-
-    const len =
-        Math.hypot(
-            dx,
-            dy
-        ) || 1;
-
-
-    const nx =
-        dy /
-        len;
-
-
-    const ny =
-        -dx /
-        len;
-
-
-    const tickLength =
-        5;
-
-
-    ctx.save();
-
-
-    ctx.strokeStyle =
-        palette.measurement;
-
-
-    ctx.globalAlpha =
-        0.5;
-
-
-    ctx.lineWidth = 1;
-
-
-    for (
-        const p
-        of [a, b]
-    ) {
-
-        ctx.beginPath();
-
-
-        ctx.moveTo(
-            p.x -
-            nx *
-            tickLength,
-
-            p.y -
-            ny *
-            tickLength
-        );
-
-
-        ctx.lineTo(
-            p.x +
-            nx *
-            tickLength,
-
-            p.y +
-            ny *
-            tickLength
-        );
-
-
-        ctx.stroke();
-    }
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   GEOMETRY CONTROL POINT
-========================================================= */
-
-function drawGeometryPoint(
-    p,
-    palette
-) {
-
-    ctx.save();
-
-
-    const size =
-        3.5 +
-        twistNormalized *
-        2;
-
-
-    ctx.strokeStyle =
-        palette.primary;
-
-
-    ctx.lineWidth = 1.5;
-
-
-    /*
-        Square anchor instead of a circle.
-    */
-
-    ctx.strokeRect(
-        p.x - size,
-        p.y - size,
-        size * 2,
-        size * 2
-    );
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   POINT MATH
-========================================================= */
-
-function averagePoint(
-    ...points
-) {
-
-    let x = 0;
-
-    let y = 0;
-
-
-    for (
-        const p
-        of points
-    ) {
-
-        x += p.x;
-
-        y += p.y;
-    }
-
-
-    return {
-
-        x:
-            x /
-            points.length,
-
-        y:
-            y /
-            points.length
-    };
-}
-
-
-/* =========================================================
-   LINEAR INTERPOLATION
-========================================================= */
-
-function lerpPoint(
-    a,
-    b,
-    amount
-) {
-
-    return {
-
-        x:
-            a.x +
-            (
-                b.x -
-                a.x
-            ) *
-            amount,
-
-        y:
-            a.y +
-            (
-                b.y -
-                a.y
-            ) *
-            amount
-    };
-}
-
-
-/* =========================================================
-   SCALE A POINT AROUND CENTER
-========================================================= */
-
-function scaleAround(
-    pointValue,
-    center,
-    scale
-) {
-
-    return {
-
-        x:
-            center.x +
-            (
-                pointValue.x -
-                center.x
-            ) *
-            scale,
-
-        y:
-            center.y +
-            (
-                pointValue.y -
-                center.y
-            ) *
-            scale
-    };
-}
-
-
-/* =========================================================
-   SMOOTH LANDMARK
-========================================================= */
-
-function smoothPoint(
+function trackedPoint(
     id,
     target
 ) {
 
     const previous =
-        geometrySmooth.get(
+        geometryPoints.get(
             id
         );
 
 
     if (!previous) {
 
-        geometrySmooth.set(
+        const initial = {
+
+            x: target.x,
+
+            y: target.y,
+
+            lastTime:
+                performance.now(),
+
+            vx: 0,
+
+            vy: 0
+        };
+
+
+        geometryPoints.set(
             id,
-            {
-                x: target.x,
-                y: target.y
-            }
+            initial
         );
 
 
-        return target;
+        return {
+            x: target.x,
+            y: target.y
+        };
     }
 
 
+    const now =
+        performance.now();
+
+
+    const dt =
+        Math.max(
+            8,
+            Math.min(
+                80,
+                now -
+                previous.lastTime
+            )
+        );
+
+
     /*
-        Measure movement speed.
+        Current velocity.
     */
 
-    if (
-        id ===
-        "wrist"
-    ) {
-
-        if (
-            geometryLastCenter
-        ) {
-
-            geometryVelocity =
-                distance(
-                    previous,
-                    target
-                );
-        }
+    const vx =
+        (
+            target.x -
+            previous.x
+        ) /
+        dt;
 
 
-        geometryLastCenter =
-            target;
-    }
+    const vy =
+        (
+            target.y -
+            previous.y
+        ) /
+        dt;
 
 
     /*
-        Adaptive smoothing.
+        Smooth velocity.
+    */
 
-        Small movement:
-        smoother.
+    previous.vx =
+        previous.vx * 0.55 +
+        vx * 0.45;
 
-        Fast movement:
-        more responsive.
+
+    previous.vy =
+        previous.vy * 0.55 +
+        vy * 0.45;
+
+
+    /*
+        Speed in pixels/ms.
     */
 
     const speed =
+        Math.hypot(
+            previous.vx,
+            previous.vy
+        );
+
+
+    /*
+        Faster hand =
+        more aggressive smoothing.
+
+        This is intentionally adaptive:
+        slow movements stay smooth,
+        fast movements catch up immediately.
+    */
+
+    const speedFactor =
         Math.min(
             1,
-            geometryVelocity /
-            30
+            speed / 1.2
         );
 
 
     const smoothing =
-        GEOMETRY_BASE_SMOOTHING +
+        GEOMETRY_SMOOTHING_SLOW +
         (
-            GEOMETRY_FAST_SMOOTHING -
-            GEOMETRY_BASE_SMOOTHING
+            GEOMETRY_SMOOTHING_FAST -
+            GEOMETRY_SMOOTHING_SLOW
         ) *
-        speed;
+        speedFactor;
 
+
+    /*
+        Predict slightly ahead.
+    */
+
+    let predictedX =
+        target.x +
+        previous.vx *
+        PREDICTION_TIME *
+        1000;
+
+
+    let predictedY =
+        target.y +
+        previous.vy *
+        PREDICTION_TIME *
+        1000;
+
+
+    /*
+        Limit prediction.
+    */
+
+    const predictionDX =
+        predictedX -
+        target.x;
+
+
+    const predictionDY =
+        predictedY -
+        target.y;
+
+
+    const predictionLength =
+        Math.hypot(
+            predictionDX,
+            predictionDY
+        );
+
+
+    if (
+        predictionLength >
+        MAX_PREDICTION
+    ) {
+
+        const scale =
+            MAX_PREDICTION /
+            predictionLength;
+
+
+        predictedX =
+            target.x +
+            predictionDX *
+            scale;
+
+
+        predictedY =
+            target.y +
+            predictionDY *
+            scale;
+    }
+
+
+    /*
+        Smooth toward predicted position.
+    */
 
     previous.x +=
         (
-            target.x -
+            predictedX -
             previous.x
         ) *
         smoothing;
@@ -4257,53 +3715,65 @@ function smoothPoint(
 
     previous.y +=
         (
-            target.y -
+            predictedY -
             previous.y
         ) *
         smoothing;
 
 
-    return previous;
+    previous.lastTime =
+        now;
+
+
+    return {
+
+        x:
+            previous.x,
+
+        y:
+            previous.y
+    };
 }
 
 
 /* =========================================================
-   RESET VISUALS
+   FAST PINCH
 ========================================================= */
 
-function resetGeometryVisuals() {
+function isPinchingFast(
+    hand
+) {
 
-    geometrySmooth.clear();
+    if (!hand) return false;
 
-    geometryLastCenter =
-        null;
 
-    geometryVelocity =
-        0;
+    const thumb =
+        hand[4];
 
-    twistAngle =
-        0;
 
-    twistNormalized =
-        0;
+    const index =
+        hand[8];
 
-    twistTarget =
-        0;
 
-    inversionAmount =
-        0;
+    const distance =
+        Math.hypot(
+            thumb.x -
+            index.x,
 
-    inversionTarget =
-        0;
+            thumb.y -
+            index.y
+        );
 
-    automaticTwistFilter =
-        false;
 
-    if (shapeDisplay) {
+    /*
+        Normalized threshold.
 
-        shapeDisplay.textContent =
-            "GEOMETRY // WAITING";
-    }
+        Larger threshold makes pinch easier
+        to trigger during quick movements.
+    */
+
+    return distance <
+        0.085;
 }
 
 
@@ -4360,20 +3830,14 @@ function drawHands() {
         ctx.save();
 
 
-        const alpha =
-            0.45 +
-            visualEnergy *
-            0.35;
-
-
         ctx.strokeStyle =
-            `rgba(255,255,255,${alpha})`;
+            "rgba(255,255,255,0.58)";
 
 
         ctx.lineWidth =
             fpsBoost
                 ? 1
-                : 1.2;
+                : 1.25;
 
 
         for (
@@ -4415,7 +3879,7 @@ function drawHands() {
         if (!fpsBoost) {
 
             ctx.fillStyle =
-                `rgba(255,255,255,${0.65 + visualEnergy * 0.25})`;
+                "rgba(255,255,255,0.8)";
 
 
             for (
@@ -4427,19 +3891,22 @@ function drawHands() {
                     point(p);
 
 
-                ctx.fillRect(
-                    pos.x - 1,
-                    pos.y - 1,
-                    2,
-                    2
+                ctx.beginPath();
+
+
+                ctx.arc(
+                    pos.x,
+                    pos.y,
+                    1.6,
+                    0,
+                    Math.PI * 2
                 );
+
+
+                ctx.fill();
             }
         }
 
-
-        /*
-            Index cursor.
-        */
 
         const index =
             point(
@@ -4451,20 +3918,20 @@ function drawHands() {
             "rgba(255,255,255,0.9)";
 
 
-        ctx.lineWidth = 1.2;
+        ctx.beginPath();
 
 
-        ctx.strokeRect(
-            index.x - 5,
-            index.y - 5,
-            10,
-            10
+        ctx.arc(
+            index.x,
+            index.y,
+            6,
+            0,
+            Math.PI * 2
         );
 
 
-        /*
-            Target box.
-        */
+        ctx.stroke();
+
 
         if (
             targetVisible &&
@@ -4490,7 +3957,7 @@ function drawHands() {
 
 
             ctx.strokeStyle =
-                "rgba(255,255,255,0.3)";
+                "rgba(255,255,255,0.25)";
 
 
             ctx.strokeRect(
@@ -4766,22 +4233,16 @@ function drawFaceFilter() {
         ctx.save();
 
 
-        const energy =
-            visualEnergy;
-
-
         if (
             faceFilter ===
             "CYBER"
         ) {
 
             ctx.strokeStyle =
-                `rgba(255,255,255,${0.75 + energy * 0.2})`;
+                "rgba(255,255,255,0.9)";
 
 
-            ctx.lineWidth =
-                1.5 +
-                twistNormalized;
+            ctx.lineWidth = 2;
 
 
             ctx.strokeRect(
@@ -4816,17 +4277,15 @@ function drawFaceFilter() {
         ) {
 
             ctx.strokeStyle =
-                `rgba(255,255,255,${0.55 + energy * 0.3})`;
+                "rgba(255,255,255,0.85)";
 
 
-            ctx.lineWidth =
-                1.2 +
-                twistNormalized;
+            ctx.lineWidth = 2;
 
 
             for (
                 let i = 0;
-                i < 6;
+                i < 5;
                 i++
             ) {
 
@@ -4913,7 +4372,7 @@ function drawFaceFilter() {
 
 
 /* =========================================================
-   OBJECTS
+   OBJECT DETECTION DRAW
 ========================================================= */
 
 function drawObjects() {
@@ -5006,7 +4465,7 @@ function drawObjects() {
 
 
 /* =========================================================
-   SIGN LANGUAGE / HAND SHAPE
+   SIGN LANGUAGE
 ========================================================= */
 
 function getSign(
@@ -5041,10 +4500,6 @@ function getSign(
         );
 
 
-    /*
-        V.
-    */
-
     if (
         index &&
         middle &&
@@ -5055,10 +4510,6 @@ function getSign(
         return "V";
     }
 
-
-    /*
-        Point.
-    */
 
     if (
         index &&
@@ -5071,10 +4522,6 @@ function getSign(
     }
 
 
-    /*
-        I.
-    */
-
     if (
         !index &&
         !middle &&
@@ -5086,10 +4533,6 @@ function getSign(
     }
 
 
-    /*
-        Open hand.
-    */
-
     if (
         index &&
         middle &&
@@ -5100,10 +4543,6 @@ function getSign(
         return "OPEN";
     }
 
-
-    /*
-        Fist.
-    */
 
     if (
         !index &&
@@ -5247,7 +4686,7 @@ function getPalmCenter(
 
 
 /* =========================================================
-   NORMALIZED LANDMARK → CANVAS
+   POINT
 ========================================================= */
 
 function point(
@@ -5387,12 +4826,10 @@ function drawCorners(
         y + s
     );
 
-
     ctx.lineTo(
         x,
         y
     );
-
 
     ctx.lineTo(
         x + s,
@@ -5405,12 +4842,10 @@ function drawCorners(
         y
     );
 
-
     ctx.lineTo(
         x + width,
         y
     );
-
 
     ctx.lineTo(
         x + width,
@@ -5423,12 +4858,10 @@ function drawCorners(
         y + height - s
     );
 
-
     ctx.lineTo(
         x,
         y + height
     );
-
 
     ctx.lineTo(
         x + s,
@@ -5441,12 +4874,10 @@ function drawCorners(
         y + height
     );
 
-
     ctx.lineTo(
         x + width,
         y + height
     );
-
 
     ctx.lineTo(
         x + width,
@@ -5455,44 +4886,6 @@ function drawCorners(
 
 
     ctx.stroke();
-}
-
-
-/* =========================================================
-   SMOOTH STEP
-========================================================= */
-
-function smoothStep(
-    edge0,
-    edge1,
-    value
-) {
-
-    const t =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                (
-                    value -
-                    edge0
-                ) /
-                (
-                    edge1 -
-                    edge0
-                )
-            )
-        );
-
-
-    return (
-        t *
-        t *
-        (
-            3 -
-            2 * t
-        )
-    );
 }
 
 
@@ -5522,7 +4915,7 @@ function updateFPS() {
 
 
     const now =
-        performanceNow();
+        performance.now();
 
 
     if (
@@ -5568,19 +4961,15 @@ console.log(
 );
 
 console.log(
-    "SPECTRA // SYSTEM READY"
+    "SPECTRA // FAST GEOMETRY READY"
 );
 
 console.log(
-    "SPECTRA // SMOOTH GEOMETRY"
+    "SPECTRA // DOUBLE PINCH FILTERS READY"
 );
 
 console.log(
-    "SPECTRA // TWIST FILTER SYSTEM"
-);
-
-console.log(
-    "SPECTRA // GESTURE + SIGN DISPLAY"
+    "SPECTRA // MEASUREMENT HUD READY"
 );
 
 console.log(
