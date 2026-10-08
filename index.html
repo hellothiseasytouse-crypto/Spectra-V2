@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>SPECTRA</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <main class="app">
+
+        <h1>SPECTRA</h1>
+
+        <p>Computer Vision Experiment</p>
+
+        <div class="camera-wrapper">
+
+            <video id="camera"
+                   autoplay
+                   playsinline
+                   muted>
+            </video>
+
+            <canvas id="overlay"></canvas>
+
+            <div id="cameraMessage">
+                CAMERA OFF
+            </div>
+
+        </div>
+
+        <button id="startButton">
+            START CAMERA
+        </button>
+
+        <p id="status">
+            System ready.
+        </p>
+
+    </main>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
