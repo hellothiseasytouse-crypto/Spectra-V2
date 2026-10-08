@@ -1,13 +1,14 @@
 import {
     FilesetResolver,
     GestureRecognizer,
-    FaceDetector
+    FaceDetector,
+    ObjectDetector
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304";
 
 
 /* =========================================================
-   SPECTRA v0.4
-   FAST HAND TRACKING // GESTURES // OBJECTS // PRIVACY
+   SPECTRA v0.5
+   VISION INTERACTION SYSTEM
 ========================================================= */
 
 
@@ -15,101 +16,256 @@ import {
    DOM
 ========================================================= */
 
-const video = document.getElementById("camera");
-const canvas = document.getElementById("overlay");
-const ctx = canvas.getContext("2d");
+const video =
+    document.getElementById(
+        "camera"
+    );
 
-const startButton = document.getElementById("startButton");
-const trackingButton = document.getElementById("trackingButton");
 
-const statusText = document.getElementById("status");
-const cameraMessage = document.getElementById("cameraMessage");
+const canvas =
+    document.getElementById(
+        "overlay"
+    );
 
-const systemStatus = document.getElementById("systemStatus");
-const statusDot = document.getElementById("statusDot");
 
-const handState = document.getElementById("handState");
-const targetNumber = document.getElementById("targetNumber");
+const ctx =
+    canvas.getContext(
+        "2d"
+    );
 
-const xValue = document.getElementById("xValue");
-const yValue = document.getElementById("yValue");
 
-const fpsValue = document.getElementById("fpsValue");
-const trackingState = document.getElementById("trackingState");
+const startButton =
+    document.getElementById(
+        "startButton"
+    );
 
-const gestureText = document.getElementById("gestureText");
 
-const handsValue = document.getElementById("handsValue");
-const indexValue = document.getElementById("indexValue");
-const pinchValue = document.getElementById("pinchValue");
-const gestureValue = document.getElementById("gestureValue");
+const trackingButton =
+    document.getElementById(
+        "trackingButton"
+    );
+
+
+const boxButton =
+    document.getElementById(
+        "boxButton"
+    );
+
+
+const objectButton =
+    document.getElementById(
+        "objectButton"
+    );
+
+
+const privacyButton =
+    document.getElementById(
+        "privacyButton"
+    );
+
+
+const signButton =
+    document.getElementById(
+        "signButton"
+    );
+
+
+const objectModeButton =
+    document.getElementById(
+        "objectModeButton"
+    );
+
+
+const statusText =
+    document.getElementById(
+        "status"
+    );
+
+
+const cameraMessage =
+    document.getElementById(
+        "cameraMessage"
+    );
+
+
+const systemStatus =
+    document.getElementById(
+        "systemStatus"
+    );
+
+
+const statusDot =
+    document.getElementById(
+        "statusDot"
+    );
+
+
+const handState =
+    document.getElementById(
+        "handState"
+    );
+
+
+const targetNumber =
+    document.getElementById(
+        "targetNumber"
+    );
+
+
+const xValue =
+    document.getElementById(
+        "xValue"
+    );
+
+
+const yValue =
+    document.getElementById(
+        "yValue"
+    );
+
+
+const fpsValue =
+    document.getElementById(
+        "fpsValue"
+    );
+
+
+const trackingState =
+    document.getElementById(
+        "trackingState"
+    );
+
+
+const gestureText =
+    document.getElementById(
+        "gestureText"
+    );
+
+
+const handsValue =
+    document.getElementById(
+        "handsValue"
+    );
+
+
+const indexValue =
+    document.getElementById(
+        "indexValue"
+    );
+
+
+const pinchValue =
+    document.getElementById(
+        "pinchValue"
+    );
+
+
+const gestureValue =
+    document.getElementById(
+        "gestureValue"
+    );
 
 
 /* =========================================================
-   STATE
+   MODELS
 ========================================================= */
 
 let gestureRecognizer = null;
+
 let faceDetector = null;
 
+let objectDetector = null;
+
+
+/* =========================================================
+   CAMERA STATE
+========================================================= */
+
 let cameraStream = null;
+
 let cameraRunning = false;
 
 let trackingEnabled = true;
 
+
+/* =========================================================
+   FEATURE STATE
+========================================================= */
+
 let showTargetBox = true;
+
+let objectDetectionEnabled = false;
+
 let facePrivacy = false;
+
 let signLanguageMode = false;
+
 let objectMode = true;
 
-let lastVideoTime = -1;
-let lastDetectionTime = 0;
 
-let previousIndex = null;
+/* =========================================================
+   RESULTS
+========================================================= */
 
-let frameCounter = 0;
-let displayedFPS = 0;
-let lastFPSUpdate = performance.now();
+let latestHandResults = null;
 
 let latestFaceResults = null;
-let lastFaceDetection = 0;
+
+let latestObjectResults = null;
 
 
 /* =========================================================
    PERFORMANCE
 ========================================================= */
 
-/*
-   Hand recognition target.
+let lastVideoTime = -1;
 
-   30 FPS is normally more than enough for hand interaction
-   and prevents the browser from getting overloaded.
-*/
+let lastHandDetection = 0;
 
-const HAND_DETECTION_INTERVAL = 1000 / 30;
+let lastObjectDetection = 0;
 
+let lastFaceDetection = 0;
 
-/*
-   Face detection doesn't need to happen every frame.
+let previousIndex = null;
 
-   We update it around 10 times per second.
-*/
+let frameCounter = 0;
 
-const FACE_DETECTION_INTERVAL = 100;
+let lastFPSUpdate =
+    performance.now();
 
 
 /*
-   Lower inference resolution = faster tracking.
+   Hand tracking.
 
-   The displayed camera can still remain large.
+   30 FPS gives a good balance between
+   responsiveness and CPU/GPU usage.
 */
 
-const INFERENCE_WIDTH = 640;
-const INFERENCE_HEIGHT = 360;
+const HAND_INTERVAL =
+    1000 / 30;
+
+
+/*
+   Object recognition doesn't need
+   to run 30 times per second.
+
+   Around 8 FPS is enough to feel live.
+*/
+
+const OBJECT_INTERVAL =
+    1000 / 8;
+
+
+/*
+   Face detection can be slower.
+*/
+
+const FACE_INTERVAL =
+    1000 / 10;
 
 
 /* =========================================================
-   MODELS
+   MODEL URLS
 ========================================================= */
 
 const WASM_URL =
@@ -124,256 +280,30 @@ const FACE_MODEL_URL =
     "https://storage.googleapis.com/mediapipe-models/face_detector/face_detector/float16/1/face_detector.task";
 
 
+/*
+   EfficientDet Lite 0.
+
+   This is a lightweight general object detector
+   suitable for browser use.
+*/
+
+const OBJECT_MODEL_URL =
+    "https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0.tflite";
+
+
 /* =========================================================
    VIRTUAL OBJECTS
 ========================================================= */
 
 const virtualObjects = [];
 
-let nextObjectID = 1;
-
 let grabbedObject = null;
 
-
-/*
-   These objects are intentionally simple for v0.4.
-
-   Later we can make them 3D / glowing / animated.
-*/
-
-function createVirtualObject(
-    x,
-    y,
-    type = "BOX"
-) {
-
-    const object = {
-
-        id: nextObjectID++,
-
-        x,
-        y,
-
-        width: 110,
-        height: 110,
-
-        rotation: 0,
-
-        type,
-
-        grabbed: false
-    };
-
-
-    virtualObjects.push(object);
-
-    return object;
-}
-
-
-/*
-   Create a starting object when the system begins.
-*/
-
-function createInitialObject() {
-
-    if (virtualObjects.length > 0) {
-        return;
-    }
-
-
-    createVirtualObject(
-        canvas.width / 2,
-        canvas.height / 2,
-        "BOX"
-    );
-}
+let nextObjectID = 1;
 
 
 /* =========================================================
-   CREATE EXTRA CONTROLS
-========================================================= */
-
-/*
-   We don't modify your existing HTML.
-
-   These buttons are created automatically.
-*/
-
-function createExtraControls() {
-
-    const controls =
-        document.querySelector(".controls");
-
-    if (!controls) {
-        return;
-    }
-
-
-    const boxButton =
-        document.createElement("button");
-
-    boxButton.id =
-        "boxVisibilityButton";
-
-    boxButton.textContent =
-        "TARGET BOX ON";
-
-
-    const privacyButton =
-        document.createElement("button");
-
-    privacyButton.id =
-        "privacyButton";
-
-    privacyButton.textContent =
-        "FACE PRIVACY OFF";
-
-
-    const signButton =
-        document.createElement("button");
-
-    signButton.id =
-        "signButton";
-
-    signButton.textContent =
-        "SIGN LANGUAGE OFF";
-
-
-    const objectButton =
-        document.createElement("button");
-
-    objectButton.id =
-        "objectButton";
-
-    objectButton.textContent =
-        "OBJECT MODE ON";
-
-
-    controls.appendChild(
-        boxButton
-    );
-
-    controls.appendChild(
-        privacyButton
-    );
-
-    controls.appendChild(
-        signButton
-    );
-
-    controls.appendChild(
-        objectButton
-    );
-
-
-    /*
-       Target box toggle
-    */
-
-    boxButton.addEventListener(
-        "click",
-        () => {
-
-            showTargetBox =
-                !showTargetBox;
-
-
-            boxButton.textContent =
-                showTargetBox
-                    ? "TARGET BOX ON"
-                    : "TARGET BOX OFF";
-
-
-            boxButton.classList.toggle(
-                "active",
-                showTargetBox
-            );
-        }
-    );
-
-
-    /*
-       Face privacy
-    */
-
-    privacyButton.addEventListener(
-        "click",
-        () => {
-
-            facePrivacy =
-                !facePrivacy;
-
-
-            privacyButton.textContent =
-                facePrivacy
-                    ? "FACE PRIVACY ON"
-                    : "FACE PRIVACY OFF";
-
-
-            privacyButton.classList.toggle(
-                "active",
-                facePrivacy
-            );
-        }
-    );
-
-
-    /*
-       Sign language
-    */
-
-    signButton.addEventListener(
-        "click",
-        () => {
-
-            signLanguageMode =
-                !signLanguageMode;
-
-
-            signButton.textContent =
-                signLanguageMode
-                    ? "SIGN LANGUAGE ON"
-                    : "SIGN LANGUAGE OFF";
-
-
-            signButton.classList.toggle(
-                "active",
-                signLanguageMode
-            );
-        }
-    );
-
-
-    /*
-       Virtual objects
-    */
-
-    objectButton.addEventListener(
-        "click",
-        () => {
-
-            objectMode =
-                !objectMode;
-
-
-            objectButton.textContent =
-                objectMode
-                    ? "OBJECT MODE ON"
-                    : "OBJECT MODE OFF";
-
-
-            objectButton.classList.toggle(
-                "active",
-                objectMode
-            );
-        }
-    );
-}
-
-
-/* =========================================================
-   MEDIAPIPE INITIALIZATION
+   INITIALIZE MODELS
 ========================================================= */
 
 async function createModels() {
@@ -390,11 +320,9 @@ async function createModels() {
             );
 
 
-        /*
-           Gesture Recognizer
-
-           This replaces our old homemade gesture system.
-        */
+        /* ---------------------------------------------
+           HAND / GESTURE
+        --------------------------------------------- */
 
         gestureRecognizer =
             await GestureRecognizer.createFromOptions(
@@ -410,17 +338,22 @@ async function createModels() {
                             "GPU"
                     },
 
+
                     runningMode:
                         "VIDEO",
+
 
                     numHands:
                         2,
 
+
                     minHandDetectionConfidence:
                         0.5,
 
+
                     minHandPresenceConfidence:
                         0.5,
+
 
                     minTrackingConfidence:
                         0.5
@@ -428,11 +361,9 @@ async function createModels() {
             );
 
 
-        /*
-           Face detector
-
-           Used only when Face Privacy is enabled.
-        */
+        /* ---------------------------------------------
+           FACE
+        --------------------------------------------- */
 
         faceDetector =
             await FaceDetector.createFromOptions(
@@ -448,8 +379,10 @@ async function createModels() {
                             "GPU"
                     },
 
+
                     runningMode:
                         "VIDEO",
+
 
                     minDetectionConfidence:
                         0.5
@@ -457,8 +390,42 @@ async function createModels() {
             );
 
 
+        /* ---------------------------------------------
+           OBJECT DETECTOR
+        --------------------------------------------- */
+
+        objectDetector =
+            await ObjectDetector.createFromOptions(
+                vision,
+                {
+
+                    baseOptions: {
+
+                        modelAssetPath:
+                            OBJECT_MODEL_URL,
+
+                        delegate:
+                            "GPU"
+                    },
+
+
+                    runningMode:
+                        "VIDEO",
+
+
+                    maxResults:
+                        8,
+
+
+                    scoreThreshold:
+                        0.45
+                }
+            );
+
+
         statusText.textContent =
             "SPECTRA vision systems ready.";
+
 
         trackingButton.disabled =
             false;
@@ -466,10 +433,14 @@ async function createModels() {
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            error
+        );
+
 
         statusText.textContent =
             "Vision system failed to load.";
+
 
         handState.textContent =
             "VISION SYSTEM // ERROR";
@@ -508,28 +479,27 @@ async function startCamera() {
 
                 video: {
 
-                    /*
-                       640x360 is much easier to process
-                       than forcing 1280x720 inference.
-                    */
-
                     width: {
-                        ideal: INFERENCE_WIDTH
+                        ideal: 640
                     },
+
 
                     height: {
-                        ideal: INFERENCE_HEIGHT
+                        ideal: 360
                     },
+
 
                     frameRate: {
                         ideal: 30,
                         max: 30
                     },
 
+
                     facingMode: {
                         ideal: "user"
                     }
                 },
+
 
                 audio: false
             });
@@ -570,7 +540,11 @@ async function startCamera() {
         setupCanvas();
 
 
-        if (!gestureRecognizer) {
+        if (
+            !gestureRecognizer ||
+            !faceDetector ||
+            !objectDetector
+        ) {
 
             await createModels();
         }
@@ -579,7 +553,8 @@ async function startCamera() {
         createInitialObject();
 
 
-        lastVideoTime = -1;
+        lastVideoTime =
+            -1;
 
 
         requestAnimationFrame(
@@ -589,10 +564,14 @@ async function startCamera() {
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            error
+        );
+
 
         statusText.textContent =
             "Camera access failed.";
+
 
         cameraMessage.textContent =
             "CAMERA ERROR";
@@ -616,14 +595,11 @@ function stopCamera() {
     }
 
 
-    cameraStream =
-        null;
+    cameraStream = null;
 
-    video.srcObject =
-        null;
+    video.srcObject = null;
 
-    cameraRunning =
-        false;
+    cameraRunning = false;
 
 
     systemStatus.textContent =
@@ -676,6 +652,7 @@ function setupCanvas() {
     canvas.width =
         video.videoWidth;
 
+
     canvas.height =
         video.videoHeight;
 }
@@ -718,22 +695,169 @@ trackingButton.addEventListener(
 
         if (!trackingEnabled) {
 
-            clearOverlay();
+            latestHandResults =
+                null;
 
-            handState.textContent =
-                "HAND TRACKING // OFF";
+
+            grabbedObject =
+                null;
         }
     }
 );
 
 
 /* =========================================================
-   DETECTION LOOP
+   TARGET BOX
+========================================================= */
+
+boxButton.addEventListener(
+    "click",
+    () => {
+
+        showTargetBox =
+            !showTargetBox;
+
+
+        boxButton.textContent =
+            showTargetBox
+                ? "TARGET BOX ON"
+                : "TARGET BOX OFF";
+
+
+        boxButton.classList.toggle(
+            "active",
+            showTargetBox
+        );
+    }
+);
+
+
+/* =========================================================
+   OBJECT DETECTION BUTTON
+========================================================= */
+
+objectButton.addEventListener(
+    "click",
+    () => {
+
+        objectDetectionEnabled =
+            !objectDetectionEnabled;
+
+
+        objectButton.textContent =
+            objectDetectionEnabled
+                ? "OBJECT DETECTION ON"
+                : "OBJECT DETECTION OFF";
+
+
+        objectButton.classList.toggle(
+            "active",
+            objectDetectionEnabled
+        );
+
+
+        if (!objectDetectionEnabled) {
+
+            latestObjectResults =
+                null;
+        }
+    }
+);
+
+
+/* =========================================================
+   FACE PRIVACY
+========================================================= */
+
+privacyButton.addEventListener(
+    "click",
+    () => {
+
+        facePrivacy =
+            !facePrivacy;
+
+
+        privacyButton.textContent =
+            facePrivacy
+                ? "FACE PRIVACY ON"
+                : "FACE PRIVACY OFF";
+
+
+        privacyButton.classList.toggle(
+            "active",
+            facePrivacy
+        );
+
+
+        if (!facePrivacy) {
+
+            latestFaceResults =
+                null;
+        }
+    }
+);
+
+
+/* =========================================================
+   SIGN LANGUAGE
+========================================================= */
+
+signButton.addEventListener(
+    "click",
+    () => {
+
+        signLanguageMode =
+            !signLanguageMode;
+
+
+        signButton.textContent =
+            signLanguageMode
+                ? "SIGN LANGUAGE ON"
+                : "SIGN LANGUAGE OFF";
+
+
+        signButton.classList.toggle(
+            "active",
+            signLanguageMode
+        );
+    }
+);
+
+
+/* =========================================================
+   OBJECT MODE
+========================================================= */
+
+objectModeButton.addEventListener(
+    "click",
+    () => {
+
+        objectMode =
+            !objectMode;
+
+
+        objectModeButton.textContent =
+            objectMode
+                ? "OBJECT MODE ON"
+                : "OBJECT MODE OFF";
+
+
+        objectModeButton.classList.toggle(
+            "active",
+            objectMode
+        );
+    }
+);
+
+
+/* =========================================================
+   MAIN LOOP
 ========================================================= */
 
 function detectionLoop() {
 
     if (!cameraRunning) {
+
         return;
     }
 
@@ -743,7 +867,8 @@ function detectionLoop() {
 
 
     /*
-       Only process a new video frame.
+       Only process a frame when the video
+       actually has a new frame.
     */
 
     if (
@@ -760,53 +885,79 @@ function detectionLoop() {
                 video.currentTime;
 
 
-            /*
-               Limit expensive AI processing.
-            */
+            /* -----------------------------------------
+               HANDS
+            ----------------------------------------- */
 
             if (
+                trackingEnabled &&
+                gestureRecognizer &&
                 now -
-                lastDetectionTime
-                >=
-                HAND_DETECTION_INTERVAL
+                lastHandDetection >=
+                HAND_INTERVAL
             ) {
 
-                lastDetectionTime =
+                lastHandDetection =
                     now;
 
 
-                if (
-                    trackingEnabled &&
-                    gestureRecognizer
-                ) {
-
-                    detectHands(
-                        now
-                    );
-                }
+                detectHands(
+                    now
+                );
+            }
 
 
-                if (
-                    facePrivacy &&
-                    faceDetector &&
-                    now -
-                    lastFaceDetection
-                    >=
-                    FACE_DETECTION_INTERVAL
-                ) {
+            /* -----------------------------------------
+               OBJECTS
+            ----------------------------------------- */
 
-                    detectFace(
-                        now
-                    );
-                }
+            if (
+                objectDetectionEnabled &&
+                objectDetector &&
+                now -
+                lastObjectDetection >=
+                OBJECT_INTERVAL
+            ) {
+
+                lastObjectDetection =
+                    now;
+
+
+                detectObjects(
+                    now
+                );
+            }
+
+
+            /* -----------------------------------------
+               FACE
+            ----------------------------------------- */
+
+            if (
+                facePrivacy &&
+                faceDetector &&
+                now -
+                lastFaceDetection >=
+                FACE_INTERVAL
+            ) {
+
+                lastFaceDetection =
+                    now;
+
+
+                detectFace(
+                    now
+                );
             }
         }
     }
 
 
     /*
-       Drawing still runs every browser frame.
-       This makes movement look smoother.
+       Rendering happens every browser frame.
+
+       AI doesn't need to run every render frame.
+       This keeps movement visually smoother.
     */
 
     render();
@@ -831,22 +982,22 @@ function detectHands(
 
     try {
 
-        const results =
+        latestHandResults =
             gestureRecognizer.recognizeForVideo(
                 video,
                 timestamp
             );
 
 
-        processResults(
-            results
+        processHands(
+            latestHandResults
         );
 
 
     } catch (error) {
 
         console.error(
-            "Gesture recognition error:",
+            "Hand detection error:",
             error
         );
     }
@@ -870,10 +1021,6 @@ function detectFace(
             );
 
 
-        lastFaceDetection =
-            timestamp;
-
-
     } catch (error) {
 
         console.error(
@@ -885,10 +1032,37 @@ function detectFace(
 
 
 /* =========================================================
-   PROCESS HAND RESULTS
+   OBJECT DETECTION
 ========================================================= */
 
-function processResults(
+function detectObjects(
+    timestamp
+) {
+
+    try {
+
+        latestObjectResults =
+            objectDetector.detectForVideo(
+                video,
+                timestamp
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "Object detection error:",
+            error
+        );
+    }
+}
+
+
+/* =========================================================
+   PROCESS HANDS
+========================================================= */
+
+function processHands(
     results
 ) {
 
@@ -927,31 +1101,13 @@ function processResults(
         "01";
 
 
-    /*
-       Draw every detected hand.
-    */
-
-    results.landmarks.forEach(
-        (landmarks, index) => {
-
-            drawHand(
-                landmarks,
-                index
-            );
-        }
-    );
-
-
-    /*
-       Primary hand.
-    */
-
     const primaryHand =
         results.landmarks[0];
 
 
     const indexFinger =
         primaryHand[8];
+
 
     const thumb =
         primaryHand[4];
@@ -968,11 +1124,8 @@ function processResults(
 
 
     /*
-       Faster smoothing.
-
-       Old version used 0.35 which created noticeable delay.
-
-       0.70 follows the finger much more closely.
+       0.70 = much more responsive
+       than our old 0.35.
     */
 
     const smoothed =
@@ -1006,9 +1159,9 @@ function processResults(
         `${Math.round(smoothed.x)}, ${Math.round(smoothed.y)}`;
 
 
-    /*
-       Pinch detection.
-    */
+    /* ---------------------------------------------
+       PINCH
+    --------------------------------------------- */
 
     const pinchDistance =
         distance(
@@ -1028,20 +1181,16 @@ function processResults(
             : "NO";
 
 
-    /*
-       Get MediaPipe gesture.
-    */
+    /* ---------------------------------------------
+       GESTURE
+    --------------------------------------------- */
 
     let gesture =
-        getMediaPipeGesture(
+        getGesture(
             results,
             0
         );
 
-
-    /*
-       Override with pinch when necessary.
-    */
 
     if (pinch) {
 
@@ -1050,11 +1199,13 @@ function processResults(
     }
 
 
-    /*
-       Sign language mode.
-    */
+    /* ---------------------------------------------
+       SIGN LANGUAGE
+    --------------------------------------------- */
 
-    if (signLanguageMode) {
+    if (
+        signLanguageMode
+    ) {
 
         const sign =
             detectSign(
@@ -1080,32 +1231,9 @@ function processResults(
         gesture;
 
 
-    /*
-       Cursor.
-    */
-
-    drawCursor(
-        smoothed.x,
-        smoothed.y,
-        pinch
-    );
-
-
-    /*
-       Target box.
-    */
-
-    if (showTargetBox) {
-
-        drawTargetBox(
-            primaryHand
-        );
-    }
-
-
-    /*
-       Virtual object interaction.
-    */
+    /* ---------------------------------------------
+       OBJECT INTERACTION
+    --------------------------------------------- */
 
     if (objectMode) {
 
@@ -1119,10 +1247,10 @@ function processResults(
 
 
 /* =========================================================
-   MEDIAPIPE GESTURE NAME
+   GET GESTURE
 ========================================================= */
 
-function getMediaPipeGesture(
+function getGesture(
     results,
     handIndex
 ) {
@@ -1152,25 +1280,33 @@ function getMediaPipeGesture(
         case "Open_Palm":
             return "OPEN PALM";
 
+
         case "Closed_Fist":
             return "FIST";
+
 
         case "Pointing_Up":
             return "POINT";
 
+
         case "Thumb_Up":
             return "THUMBS UP";
+
 
         case "Thumb_Down":
             return "THUMBS DOWN";
 
+
         case "Victory":
             return "VICTORY";
+
 
         case "ILoveYou":
             return "I LOVE YOU";
 
+
         default:
+
             return name
                 ? name.toUpperCase()
                 : "TRACKING";
@@ -1181,14 +1317,6 @@ function getMediaPipeGesture(
 /* =========================================================
    SIGN LANGUAGE
 ========================================================= */
-
-/*
-   This is a FUN starter system.
-
-   It is NOT a complete sign-language translator.
-
-   These are simple static-sign approximations.
-*/
 
 function detectSign(
     landmarks
@@ -1201,6 +1329,7 @@ function detectSign(
             6
         );
 
+
     const middle =
         isFingerExtended(
             landmarks,
@@ -1208,12 +1337,14 @@ function detectSign(
             10
         );
 
+
     const ring =
         isFingerExtended(
             landmarks,
             16,
             14
         );
+
 
     const pinky =
         isFingerExtended(
@@ -1224,8 +1355,37 @@ function detectSign(
 
 
     /*
+       I LOVE YOU
+    */
+
+    if (
+        index &&
+        !middle &&
+        !ring &&
+        pinky
+    ) {
+
+        return "I LOVE YOU";
+    }
+
+
+    /*
+       V
+    */
+
+    if (
+        index &&
+        middle &&
+        !ring &&
+        !pinky
+    ) {
+
+        return "V";
+    }
+
+
+    /*
        B
-       Four fingers extended.
     */
 
     if (
@@ -1241,7 +1401,6 @@ function detectSign(
 
     /*
        D
-       Index up, other fingers closed.
     */
 
     if (
@@ -1256,39 +1415,7 @@ function detectSign(
 
 
     /*
-       V
-       Index + middle extended.
-    */
-
-    if (
-        index &&
-        middle &&
-        !ring &&
-        !pinky
-    ) {
-
-        return "V";
-    }
-
-
-    /*
-       FIST
-    */
-
-    if (
-        !index &&
-        !middle &&
-        !ring &&
-        !pinky
-    ) {
-
-        return "A / FIST";
-    }
-
-
-    /*
        I
-       Pinky extended.
     */
 
     if (
@@ -1303,18 +1430,17 @@ function detectSign(
 
 
     /*
-       I LOVE YOU style:
-       index + pinky extended.
+       FIST / A-style approximation
     */
 
     if (
-        index &&
+        !index &&
         !middle &&
         !ring &&
-        pinky
+        !pinky
     ) {
 
-        return "I LOVE YOU";
+        return "A / FIST";
     }
 
 
@@ -1335,11 +1461,17 @@ function isFingerExtended(
     const wrist =
         landmarks[0];
 
+
     const tip =
-        landmarks[tipIndex];
+        landmarks[
+            tipIndex
+        ];
+
 
     const pip =
-        landmarks[pipIndex];
+        landmarks[
+            pipIndex
+        ];
 
 
     const tipDistance =
@@ -1364,7 +1496,7 @@ function isFingerExtended(
 
 
 /* =========================================================
-   VIRTUAL OBJECT INTERACTION
+   OBJECT INTERACTION
 ========================================================= */
 
 function updateObjectInteraction(
@@ -1374,8 +1506,7 @@ function updateObjectInteraction(
 ) {
 
     /*
-       If we aren't holding anything and
-       pinch begins, find the closest object.
+       Pinch starts.
     */
 
     if (
@@ -1399,7 +1530,7 @@ function updateObjectInteraction(
 
 
     /*
-       Move grabbed object.
+       Move.
     */
 
     if (
@@ -1410,13 +1541,14 @@ function updateObjectInteraction(
         grabbedObject.x =
             x;
 
+
         grabbedObject.y =
             y;
     }
 
 
     /*
-       Release object.
+       Release.
     */
 
     if (
@@ -1427,6 +1559,7 @@ function updateObjectInteraction(
         grabbedObject.grabbed =
             false;
 
+
         grabbedObject =
             null;
     }
@@ -1434,18 +1567,13 @@ function updateObjectInteraction(
 
 
 /* =========================================================
-   FIND OBJECT
+   FIND VIRTUAL OBJECT
 ========================================================= */
 
 function findObjectAt(
     x,
     y
 ) {
-
-    /*
-       Search backwards so the newest object
-       is selected first.
-    */
 
     for (
         let i =
@@ -1463,26 +1591,29 @@ function findObjectAt(
         const halfWidth =
             object.width / 2;
 
+
         const halfHeight =
             object.height / 2;
 
 
         if (
+
             x >=
-                object.x -
-                halfWidth &&
+            object.x -
+            halfWidth &&
 
             x <=
-                object.x +
-                halfWidth &&
+            object.x +
+            halfWidth &&
 
             y >=
-                object.y -
-                halfHeight &&
+            object.y -
+            halfHeight &&
 
             y <=
-                object.y +
-                halfHeight
+            object.y +
+            halfHeight
+
         ) {
 
             return object;
@@ -1491,6 +1622,68 @@ function findObjectAt(
 
 
     return null;
+}
+
+
+/* =========================================================
+   CREATE VIRTUAL OBJECT
+========================================================= */
+
+function createVirtualObject(
+    x,
+    y,
+    type = "BOX"
+) {
+
+    const object = {
+
+        id:
+            nextObjectID++,
+
+        x,
+
+        y,
+
+        width:
+            110,
+
+        height:
+            110,
+
+        rotation:
+            0,
+
+        type,
+
+        grabbed:
+            false
+    };
+
+
+    virtualObjects.push(
+        object
+    );
+
+
+    return object;
+}
+
+
+/* =========================================================
+   INITIAL OBJECT
+========================================================= */
+
+function createInitialObject() {
+
+    if (
+        virtualObjects.length === 0
+    ) {
+
+        createVirtualObject(
+            canvas.width / 2,
+            canvas.height / 2
+        );
+    }
 }
 
 
@@ -1504,7 +1697,7 @@ function render() {
 
 
     /*
-       Face privacy is rendered first.
+       FACE PRIVACY
     */
 
     if (facePrivacy) {
@@ -1514,7 +1707,20 @@ function render() {
 
 
     /*
-       Virtual objects.
+       OBJECT RECOGNITION
+    */
+
+    if (
+        objectDetectionEnabled &&
+        latestObjectResults
+    ) {
+
+        drawRecognizedObjects();
+    }
+
+
+    /*
+       VIRTUAL OBJECTS
     */
 
     if (objectMode) {
@@ -1523,11 +1729,246 @@ function render() {
             drawVirtualObject
         );
     }
+
+
+    /*
+       HANDS
+    */
+
+    if (
+        trackingEnabled &&
+        latestHandResults &&
+        latestHandResults.landmarks
+    ) {
+
+        latestHandResults.landmarks.forEach(
+            (landmarks, index) => {
+
+                drawHand(
+                    landmarks,
+                    index
+                );
+            }
+        );
+
+
+        const primaryHand =
+            latestHandResults
+                .landmarks[0];
+
+
+        if (primaryHand) {
+
+            const indexFinger =
+                primaryHand[8];
+
+
+            const thumb =
+                primaryHand[4];
+
+
+            const x =
+                indexFinger.x *
+                canvas.width;
+
+
+            const y =
+                indexFinger.y *
+                canvas.height;
+
+
+            const pinch =
+                distance(
+                    indexFinger,
+                    thumb
+                ) <
+                0.075;
+
+
+            drawCursor(
+                x,
+                y,
+                pinch
+            );
+
+
+            if (showTargetBox) {
+
+                drawTargetBox(
+                    primaryHand
+                );
+            }
+        }
+    }
 }
 
 
 /* =========================================================
-   VIRTUAL OBJECT DRAWING
+   DRAW RECOGNIZED OBJECTS
+========================================================= */
+
+function drawRecognizedObjects() {
+
+    if (
+        !latestObjectResults ||
+        !latestObjectResults.detections
+    ) {
+
+        return;
+    }
+
+
+    latestObjectResults.detections.forEach(
+        detection => {
+
+            const box =
+                detection.boundingBox;
+
+
+            if (!box) {
+
+                return;
+            }
+
+
+            const x =
+                box.originX;
+
+
+            const y =
+                box.originY;
+
+
+            const width =
+                box.width;
+
+
+            const height =
+                box.height;
+
+
+            let label =
+                "OBJECT";
+
+
+            let confidence =
+                0;
+
+
+            if (
+                detection.categories &&
+                detection.categories.length
+            ) {
+
+                const category =
+                    detection.categories[0];
+
+
+                if (
+                    category.categoryName
+                ) {
+
+                    label =
+                        category.categoryName;
+                }
+
+
+                confidence =
+                    category.score || 0;
+            }
+
+
+            const confidenceText =
+                Math.round(
+                    confidence * 100
+                ) +
+                "%";
+
+
+            /* -----------------------------------------
+               BOX
+            ----------------------------------------- */
+
+            ctx.save();
+
+
+            ctx.strokeStyle =
+                "rgba(255,255,255,0.85)";
+
+
+            ctx.lineWidth =
+                1.5;
+
+
+            ctx.strokeRect(
+                x,
+                y,
+                width,
+                height
+            );
+
+
+            /* -----------------------------------------
+               LABEL BACKGROUND
+            ----------------------------------------- */
+
+            const labelText =
+                label.toUpperCase() +
+                " // " +
+                confidenceText;
+
+
+            ctx.font =
+                "11px Courier New";
+
+
+            const textWidth =
+                ctx.measureText(
+                    labelText
+                ).width;
+
+
+            ctx.fillStyle =
+                "rgba(0,0,0,0.8)";
+
+
+            ctx.fillRect(
+                x,
+                Math.max(
+                    0,
+                    y - 22
+                ),
+                textWidth + 12,
+                18
+            );
+
+
+            /* -----------------------------------------
+               LABEL
+            ----------------------------------------- */
+
+            ctx.fillStyle =
+                "#ffffff";
+
+
+            ctx.fillText(
+                labelText,
+                x + 6,
+                Math.max(
+                    13,
+                    y - 9
+                )
+            );
+
+
+            ctx.restore();
+        }
+    );
+}
+
+
+/* =========================================================
+   VIRTUAL OBJECT
 ========================================================= */
 
 function drawVirtualObject(
@@ -1556,7 +1997,7 @@ function drawVirtualObject(
 
     ctx.strokeStyle =
         object.grabbed
-            ? "rgba(255,255,255,1)"
+            ? "#ffffff"
             : "rgba(255,255,255,0.75)";
 
 
@@ -1566,73 +2007,80 @@ function drawVirtualObject(
             : "rgba(255,255,255,0.03)";
 
 
-    if (
-        object.type ===
-        "BOX"
-    ) {
-
-        ctx.fillRect(
-            -object.width / 2,
-            -object.height / 2,
-            object.width,
-            object.height
-        );
+    ctx.fillRect(
+        -object.width / 2,
+        -object.height / 2,
+        object.width,
+        object.height
+    );
 
 
-        ctx.strokeRect(
-            -object.width / 2,
-            -object.height / 2,
-            object.width,
-            object.height
-        );
+    ctx.strokeRect(
+        -object.width / 2,
+        -object.height / 2,
+        object.width,
+        object.height
+    );
 
 
-        /*
-           Corner markers.
-        */
-
-        const s = 12;
+    const s =
+        12;
 
 
-        ctx.beginPath();
+    /*
+       Top-left corner.
+    */
 
-        ctx.moveTo(
-            -object.width / 2,
-            -object.height / 2 + s
-        );
-
-        ctx.lineTo(
-            -object.width / 2,
-            -object.height / 2
-        );
-
-        ctx.lineTo(
-            -object.width / 2 + s,
-            -object.height / 2
-        );
-
-        ctx.stroke();
+    ctx.beginPath();
 
 
-        ctx.beginPath();
+    ctx.moveTo(
+        -object.width / 2,
+        -object.height / 2 + s
+    );
 
-        ctx.moveTo(
-            object.width / 2 - s,
-            object.height / 2
-        );
 
-        ctx.lineTo(
-            object.width / 2,
-            object.height / 2
-        );
+    ctx.lineTo(
+        -object.width / 2,
+        -object.height / 2
+    );
 
-        ctx.lineTo(
-            object.width / 2,
-            object.height / 2 - s
-        );
 
-        ctx.stroke();
-    }
+    ctx.lineTo(
+        -object.width / 2 + s,
+        -object.height / 2
+    );
+
+
+    ctx.stroke();
+
+
+    /*
+       Bottom-right corner.
+    */
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        object.width / 2 - s,
+        object.height / 2
+    );
+
+
+    ctx.lineTo(
+        object.width / 2,
+        object.height / 2
+    );
+
+
+    ctx.lineTo(
+        object.width / 2,
+        object.height / 2 - s
+    );
+
+
+    ctx.stroke();
 
 
     ctx.restore();
@@ -1662,90 +2110,71 @@ function drawFacePrivacy() {
 
 
             if (!box) {
+
                 return;
             }
 
 
+            const padding =
+                25;
+
+
             const x =
-                box.originX;
+                Math.max(
+                    0,
+                    box.originX -
+                    padding
+                );
+
 
             const y =
-                box.originY;
+                Math.max(
+                    0,
+                    box.originY -
+                    padding
+                );
+
 
             const width =
-                box.width;
+                Math.min(
+                    canvas.width - x,
+                    box.width +
+                    padding * 2
+                );
+
 
             const height =
-                box.height;
+                Math.min(
+                    canvas.height - y,
+                    box.height +
+                    padding * 2
+                );
 
 
             /*
-               Expand the face area slightly
-               so edges aren't visible.
+               Blur the corresponding
+               camera region.
             */
-
-            const padding =
-                20;
-
-
-            const expandedX =
-                Math.max(
-                    0,
-                    x - padding
-                );
-
-
-            const expandedY =
-                Math.max(
-                    0,
-                    y - padding
-                );
-
-
-            const expandedWidth =
-                Math.min(
-                    canvas.width -
-                    expandedX,
-
-                    width +
-                    padding * 2
-                );
-
-
-            const expandedHeight =
-                Math.min(
-                    canvas.height -
-                    expandedY,
-
-                    height +
-                    padding * 2
-                );
-
 
             ctx.save();
 
 
-            /*
-               Draw a blurred copy of the
-               camera image over the face.
-            */
-
             ctx.filter =
-                "blur(22px)";
+                "blur(24px)";
 
 
             ctx.drawImage(
                 video,
 
-                expandedX,
-                expandedY,
-                expandedWidth,
-                expandedHeight,
+                x,
+                y,
+                width,
+                height,
 
-                expandedX,
-                expandedY,
-                expandedWidth,
-                expandedHeight
+                x,
+                y,
+                width,
+                height
             );
 
 
@@ -1753,21 +2182,22 @@ function drawFacePrivacy() {
 
 
             /*
-               Extra blur layer.
+               Dark translucent layer
+               to strengthen privacy.
             */
 
             ctx.save();
 
 
             ctx.fillStyle =
-                "rgba(0,0,0,0.18)";
+                "rgba(0,0,0,0.12)";
 
 
             ctx.fillRect(
-                expandedX,
-                expandedY,
-                expandedWidth,
-                expandedHeight
+                x,
+                y,
+                width,
+                height
             );
 
 
@@ -1852,6 +2282,7 @@ function drawHand(
                 points[
                     connection[0]
                 ];
+
 
             const end =
                 points[
@@ -2024,11 +2455,14 @@ function drawTargetBox(
     const minX =
         Math.min(...xs);
 
+
     const maxX =
         Math.max(...xs);
 
+
     const minY =
         Math.min(...ys);
+
 
     const maxY =
         Math.max(...ys);
@@ -2069,6 +2503,9 @@ function drawTargetBox(
 
     ctx.lineWidth =
         1;
+
+
+    ctx.setLineDash([]);
 
 
     ctx.strokeRect(
@@ -2251,6 +2688,7 @@ function smoothPoint(
             ) *
             amount,
 
+
         y:
             previous.y +
             (
@@ -2285,16 +2723,12 @@ function updateFPS() {
         1000
     ) {
 
-        displayedFPS =
+        fpsValue.textContent =
             Math.round(
                 frameCounter *
                 1000 /
                 elapsed
             );
-
-
-        fpsValue.textContent =
-            displayedFPS;
 
 
         frameCounter =
@@ -2357,18 +2791,8 @@ function showNoHand() {
         null;
 
 
-    /*
-       Release object if hand disappears.
-    */
-
-    if (grabbedObject) {
-
-        grabbedObject.grabbed =
-            false;
-
-        grabbedObject =
-            null;
-    }
+    grabbedObject =
+        null;
 }
 
 
@@ -2377,6 +2801,18 @@ function showNoHand() {
 ========================================================= */
 
 function resetInterface() {
+
+    latestHandResults =
+        null;
+
+
+    latestFaceResults =
+        null;
+
+
+    latestObjectResults =
+        null;
+
 
     handsValue.textContent =
         "0";
@@ -2440,7 +2876,9 @@ trackingButton.classList.add(
 );
 
 
-createExtraControls();
+objectModeButton.classList.add(
+    "active"
+);
 
 
 createModels();
