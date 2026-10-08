@@ -1,47 +1,42 @@
 import {
     FilesetResolver,
     GestureRecognizer,
-    FaceLandmarker,
+    FaceDetector,
     ObjectDetector
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304";
 
 
 /* =========================================================
    SPECTRA
-   PERFORMANCE + HAND TRACKING BUILD
+   HAND VFX / FACE / GESTURES / FPS BUILD
 ========================================================= */
-
-const video =
-    document.getElementById("camera");
-
-const canvas =
-    document.getElementById("overlay");
-
-if (!video || !canvas) {
-    throw new Error(
-        "SPECTRA: camera or overlay canvas not found."
-    );
-}
-
-const ctx =
-    canvas.getContext("2d");
 
 
 /* =========================================================
-   OPTIONAL UI
-   These won't crash the program if an element is missing.
+   ELEMENTS
 ========================================================= */
 
-function get(...ids) {
+const video = document.getElementById("camera");
+const canvas = document.getElementById("overlay");
 
-    for (const id of ids) {
+if (!video || !canvas) {
+    throw new Error("SPECTRA: camera or overlay canvas missing.");
+}
 
-        const element =
-            document.getElementById(id);
+const ctx = canvas.getContext("2d");
 
-        if (element) {
-            return element;
-        }
+
+/* =========================================================
+   SAFE UI FINDER
+========================================================= */
+
+function findElement(...names) {
+
+    for (const name of names) {
+
+        const el = document.getElementById(name);
+
+        if (el) return el;
     }
 
     return null;
@@ -49,142 +44,108 @@ function get(...ids) {
 
 
 const startBtn =
-    get("startBtn", "startCamera");
+    findElement("startBtn", "startCamera");
 
 const trackingBtn =
-    get("trackingBtn", "handTrackingBtn");
+    findElement("trackingBtn", "handTrackingBtn");
 
 const targetBtn =
-    get("targetBtn", "targetBoxBtn");
+    findElement("targetBtn", "targetBoxBtn");
 
 const objectBtn =
-    get("objectBtn", "objectDetectionBtn");
+    findElement("objectBtn", "objectDetectionBtn");
 
 const privacyBtn =
-    get("privacyBtn", "facePrivacyBtn");
+    findElement("privacyBtn", "facePrivacyBtn");
 
 const signBtn =
-    get("signBtn", "signLanguageBtn");
+    findElement("signBtn", "signLanguageBtn");
 
 const filterBtn =
-    get("filterBtn", "faceFilterBtn");
+    findElement("filterBtn", "faceFilterBtn");
 
 const shapeBtn =
-    get("shapeBtn", "shapesBtn");
-
-const fpsDisplay =
-    get("fps", "fpsText");
+    findElement("shapeBtn", "shapesBtn");
 
 
 /* =========================================================
-   AUTOMATIC FPS BOOST BUTTON
+   CREATE / FIND GESTURE DISPLAY
 ========================================================= */
 
-let fpsBoostBtn =
-    get(
-        "fpsBoostBtn",
-        "performanceBtn"
-    );
+function createStatusElement(id, text) {
 
+    let el = document.getElementById(id);
 
-if (!fpsBoostBtn) {
+    if (el) return el;
 
     const controls =
         document.querySelector(".controls");
 
-    if (controls) {
+    if (!controls) return null;
 
-        fpsBoostBtn =
-            document.createElement("button");
+    el = document.createElement("button");
 
-        fpsBoostBtn.id =
-            "fpsBoostBtn";
+    el.id = id;
+    el.textContent = text;
 
-        fpsBoostBtn.textContent =
-            "FPS BOOST OFF";
+    controls.appendChild(el);
 
-        controls.appendChild(
-            fpsBoostBtn
-        );
-    }
+    return el;
 }
 
 
+const gestureDisplay =
+    createStatusElement(
+        "gestureDisplay",
+        "GESTURE // WAITING"
+    );
+
+
+const fpsBoostBtn =
+    createStatusElement(
+        "fpsBoostBtn",
+        "FPS BOOST OFF"
+    );
+
+
+const shapeDisplay =
+    createStatusElement(
+        "shapeDisplay",
+        "VFX // READY"
+    );
+
+
 /* =========================================================
-   MODELS
+   MEDIAPIPE
 ========================================================= */
 
-const WASM_URL =
+const WASM =
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm";
+
 
 const GESTURE_MODEL =
     "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task";
 
+
 const FACE_MODEL =
-    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+    "https://storage.googleapis.com/mediapipe-models/face_detector/face_detector/float16/1/face_detector.task";
+
 
 const OBJECT_MODEL =
     "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite";
 
 
-/* =========================================================
-   DEVICE
-========================================================= */
+let vision = null;
 
-const mobile =
-    /Android|iPhone|iPad|iPod/i.test(
-        navigator.userAgent
-    ) ||
-    window.innerWidth < 800;
+let gestureRecognizer = null;
+
+let faceDetector = null;
+
+let objectDetector = null;
 
 
 /* =========================================================
-   PERFORMANCE MODES
-========================================================= */
-
-let fpsBoost = false;
-
-
-/*
-    Normal mode:
-    Good visuals + normal AI.
-
-    Boost mode:
-    Hand tracking gets priority.
-*/
-
-const NORMAL = mobile
-    ? {
-        hand: 55,
-        face: 160,
-        object: 350
-    }
-    : {
-        hand: 35,
-        face: 110,
-        object: 250
-    };
-
-
-const BOOST = mobile
-    ? {
-        hand: 70,
-        face: 999999,
-        object: 999999
-    }
-    : {
-        hand: 50,
-        face: 999999,
-        object: 999999
-    };
-
-
-let performanceSettings =
-    NORMAL;
-
-
-/* =========================================================
-   STATE
+   CAMERA STATE
 ========================================================= */
 
 let cameraRunning = false;
@@ -201,31 +162,66 @@ let shapesEnabled = true;
 
 
 /* =========================================================
-   FACE
+   FACE STATE
 ========================================================= */
-
-let facePrivacy = false;
-
-let faceFilter = "OFF";
 
 let privacyMode = "OFF";
 
+let faceFilter = "OFF";
+
 
 /* =========================================================
-   MEDIAPIPE
+   PERFORMANCE
 ========================================================= */
 
-let vision = null;
+const isMobile =
+    /Android|iPhone|iPad|iPod/i.test(
+        navigator.userAgent
+    ) ||
+    window.innerWidth < 800;
 
-let gestureRecognizer = null;
 
-let faceLandmarker = null;
+let fpsBoost = false;
 
-let objectDetector = null;
+
+/*
+    Hand tracking ALWAYS gets priority.
+
+    The other systems are deliberately slower.
+*/
+
+const PERFORMANCE_NORMAL = isMobile
+    ? {
+        hands: 55,
+        face: 180,
+        objects: 400
+    }
+    : {
+        hands: 32,
+        face: 110,
+        objects: 250
+    };
+
+
+const PERFORMANCE_BOOST = isMobile
+    ? {
+        hands: 65,
+        face: 999999,
+        objects: 999999
+    }
+    : {
+        hands: 45,
+        face: 999999,
+        objects: 999999
+    };
+
+
+let performance =
+    PERFORMANCE_NORMAL;
 
 
 /* =========================================================
-   RESULTS
+   DETECTION RESULTS
 ========================================================= */
 
 let handResults = null;
@@ -239,40 +235,41 @@ let objectResults = null;
    TIMERS
 ========================================================= */
 
-let lastHandDetection = 0;
+let lastHandTime = 0;
 
-let lastFaceDetection = 0;
+let lastFaceTime = 0;
 
-let lastObjectDetection = 0;
+let lastObjectTime = 0;
 
 
 /* =========================================================
    FPS
 ========================================================= */
 
-let renderFrames = 0;
+let frames = 0;
 
-let fpsCounterTime =
-    performance.now();
+let fps = 0;
 
-let currentFPS = 0;
+let fpsTimer =
+    performanceNow();
+
+
+function performanceNow() {
+    return window.performance.now();
+}
 
 
 /* =========================================================
-   SHAPES
+   HAND VFX STATE
 ========================================================= */
 
-let shapes = [];
+let vfxMode = "NONE";
 
-let drawingShape = false;
+let vfxEnergy = 0;
 
-let currentPath = [];
+let vfxRotation = 0;
 
-let grabbedShape = null;
-
-let pinchActive = false;
-
-let lastHandPoint = null;
+let vfxPulse = 0;
 
 
 /* =========================================================
@@ -281,66 +278,54 @@ let lastHandPoint = null;
 
 async function startCamera() {
 
-    if (cameraRunning) {
-        return;
-    }
-
+    if (cameraRunning) return;
 
     try {
 
         const stream =
-            await navigator.mediaDevices
-                .getUserMedia({
+            await navigator.mediaDevices.getUserMedia({
 
-                    video: {
+                video: {
 
-                        facingMode: {
-                            ideal: "user"
-                        },
-
-                        width: {
-                            ideal: 640
-                        },
-
-                        height: {
-                            ideal: 360
-                        },
-
-                        frameRate: {
-                            ideal: 30,
-                            max: 30
-                        }
+                    facingMode: {
+                        ideal: "user"
                     },
 
-                    audio: false
-                });
+                    width: {
+                        ideal: 640
+                    },
+
+                    height: {
+                        ideal: 360
+                    },
+
+                    frameRate: {
+                        ideal: 30,
+                        max: 30
+                    }
+                },
+
+                audio: false
+            });
 
 
         video.srcObject =
             stream;
 
-
-        video.playsInline =
-            true;
-
-        video.muted =
-            true;
-
+        video.muted = true;
+        video.playsInline = true;
 
         await video.play();
 
 
         canvas.width =
-            video.videoWidth ||
-            640;
+            video.videoWidth || 640;
 
         canvas.height =
-            video.videoHeight ||
-            360;
+            video.videoHeight || 360;
 
 
-        cameraRunning =
-            true;
+        cameraRunning = true;
 
 
         if (startBtn) {
@@ -350,25 +335,24 @@ async function startCamera() {
         }
 
 
+        requestAnimationFrame(render);
+
+
         /*
             IMPORTANT:
 
-            Camera starts immediately.
-            AI loads separately.
+            Only the HAND model loads
+            at startup.
+
+            Face/object models are lazy-loaded.
         */
 
-        requestAnimationFrame(
-            render
-        );
-
-
-        loadHandModel();
-
+        await loadVision();
 
     } catch (error) {
 
         console.error(
-            "Camera error:",
+            "SPECTRA CAMERA ERROR:",
             error
         );
 
@@ -378,35 +362,46 @@ async function startCamera() {
             startBtn.textContent =
                 "CAMERA ERROR";
         }
+    }
+}
 
 
-        alert(
-            "SPECTRA could not access the camera.\n\n" +
-            "Allow camera permission and use the HTTPS GitHub Pages version."
+/* =========================================================
+   LOAD CORE VISION
+========================================================= */
+
+async function loadVision() {
+
+    if (vision) return;
+
+    try {
+
+        vision =
+            await FilesetResolver
+                .forVisionTasks(WASM);
+
+
+        await loadGestureRecognizer();
+
+    } catch (error) {
+
+        console.error(
+            "SPECTRA VISION ERROR:",
+            error
         );
     }
 }
 
 
 /* =========================================================
-   LOAD VISION CORE
+   HAND MODEL
 ========================================================= */
 
-async function loadHandModel() {
+async function loadGestureRecognizer() {
 
-    if (gestureRecognizer) {
-        return;
-    }
-
+    if (gestureRecognizer) return;
 
     try {
-
-        vision =
-            await FilesetResolver
-                .forVisionTasks(
-                    WASM_URL
-                );
-
 
         gestureRecognizer =
             await GestureRecognizer
@@ -439,14 +434,13 @@ async function loadHandModel() {
 
 
         console.log(
-            "SPECTRA hand tracking READY"
+            "SPECTRA // HAND AI READY"
         );
-
 
     } catch (error) {
 
         console.error(
-            "HAND MODEL ERROR:",
+            "HAND AI ERROR:",
             error
         );
     }
@@ -455,26 +449,20 @@ async function loadHandModel() {
 
 /* =========================================================
    FACE MODEL
-   Lazy loaded ONLY when required.
 ========================================================= */
 
-async function loadFaceModel() {
+async function loadFaceDetector() {
 
-    if (faceLandmarker) {
-        return;
-    }
-
+    if (faceDetector) return;
 
     if (!vision) {
-
-        await loadHandModel();
+        await loadVision();
     }
-
 
     try {
 
-        faceLandmarker =
-            await FaceLandmarker
+        faceDetector =
+            await FaceDetector
                 .createFromOptions(
                     vision,
                     {
@@ -488,30 +476,20 @@ async function loadFaceModel() {
                         runningMode:
                             "VIDEO",
 
-                        numFaces:
-                            2,
-
-                        minFaceDetectionConfidence:
-                            0.5,
-
-                        minFacePresenceConfidence:
-                            0.5,
-
-                        minTrackingConfidence:
+                        minDetectionConfidence:
                             0.5
                     }
                 );
 
 
         console.log(
-            "SPECTRA face tracking READY"
+            "SPECTRA // FACE AI READY"
         );
-
 
     } catch (error) {
 
         console.error(
-            "FACE MODEL ERROR:",
+            "FACE AI ERROR:",
             error
         );
     }
@@ -522,18 +500,13 @@ async function loadFaceModel() {
    OBJECT MODEL
 ========================================================= */
 
-async function loadObjectModel() {
+async function loadObjectDetector() {
 
-    if (objectDetector) {
-        return;
-    }
-
+    if (objectDetector) return;
 
     if (!vision) {
-
-        await loadHandModel();
+        await loadVision();
     }
-
 
     try {
 
@@ -553,7 +526,7 @@ async function loadObjectModel() {
                             "VIDEO",
 
                         maxResults:
-                            mobile
+                            isMobile
                                 ? 3
                                 : 5,
 
@@ -564,14 +537,13 @@ async function loadObjectModel() {
 
 
         console.log(
-            "SPECTRA object detection READY"
+            "SPECTRA // OBJECT AI READY"
         );
-
 
     } catch (error) {
 
         console.error(
-            "OBJECT MODEL ERROR:",
+            "OBJECT AI ERROR:",
             error
         );
     }
@@ -579,130 +551,111 @@ async function loadObjectModel() {
 
 
 /* =========================================================
-   FPS BOOST
+   FPS BOOST BUTTON
 ========================================================= */
 
 if (fpsBoostBtn) {
 
-    fpsBoostBtn.onclick =
-        () => {
+    fpsBoostBtn.onclick = () => {
 
-            fpsBoost =
-                !fpsBoost;
-
-
-            performanceSettings =
-                fpsBoost
-                    ? BOOST
-                    : NORMAL;
+        fpsBoost =
+            !fpsBoost;
 
 
-            if (fpsBoost) {
-
-                fpsBoostBtn.textContent =
-                    "FPS BOOST ON";
-
-
-                /*
-                    Stop expensive systems.
-                */
-
-                objectDetection =
-                    false;
-
-                facePrivacy =
-                    false;
-
-                faceFilter =
-                    "OFF";
+        performance =
+            fpsBoost
+                ? PERFORMANCE_BOOST
+                : PERFORMANCE_NORMAL;
 
 
-                /*
-                    Remove unnecessary visual
-                    target box.
-                */
+        if (fpsBoost) {
 
-                targetVisible =
-                    false;
+            fpsBoostBtn.textContent =
+                "FPS BOOST ON";
 
 
-                /*
-                    IMPORTANT:
+            /*
+                Expensive systems OFF.
+            */
 
-                    We DO NOT disable:
+            objectDetection =
+                false;
 
-                    - hand tracking
-                    - gestures
-                    - pinch
-                    - shapes
-                    - sign detection
-                */
+            privacyMode =
+                "OFF";
 
-
-                if (objectBtn) {
-
-                    objectBtn.textContent =
-                        "OBJECT DETECTION OFF";
-                }
+            faceFilter =
+                "OFF";
 
 
-                if (privacyBtn) {
+            /*
+                Hand tracking stays ON.
+            */
 
-                    privacyBtn.textContent =
-                        "FACE PRIVACY OFF";
-                }
-
-
-                if (filterBtn) {
-
-                    filterBtn.textContent =
-                        "FACE FILTER OFF";
-                }
+            handTracking =
+                true;
 
 
-                if (targetBtn) {
+            /*
+                Keep shapes.
+            */
 
-                    targetBtn.textContent =
-                        "TARGET BOX OFF";
-                }
-
-
-                console.log(
-                    "SPECTRA FPS BOOST ENABLED"
-                );
+            shapesEnabled =
+                true;
 
 
-            } else {
-
-                fpsBoostBtn.textContent =
-                    "FPS BOOST OFF";
+            targetVisible =
+                false;
 
 
-                targetVisible =
-                    true;
-
-
-                if (targetBtn) {
-
-                    targetBtn.textContent =
-                        "TARGET BOX ON";
-                }
-
-
-                console.log(
-                    "SPECTRA FPS BOOST DISABLED"
-                );
+            if (objectBtn) {
+                objectBtn.textContent =
+                    "OBJECT DETECTION OFF";
             }
-        };
+
+
+            if (privacyBtn) {
+                privacyBtn.textContent =
+                    "PRIVACY OFF";
+            }
+
+
+            if (filterBtn) {
+                filterBtn.textContent =
+                    "FILTER OFF";
+            }
+
+
+            if (targetBtn) {
+                targetBtn.textContent =
+                    "TARGET BOX OFF";
+            }
+
+
+        } else {
+
+            fpsBoostBtn.textContent =
+                "FPS BOOST OFF";
+
+
+            targetVisible =
+                true;
+
+
+            if (targetBtn) {
+                targetBtn.textContent =
+                    "TARGET BOX ON";
+            }
+        }
+    };
 }
 
 
 /* =========================================================
-   BUTTONS
+   NORMAL BUTTONS
 ========================================================= */
 
 if (startBtn) {
-
     startBtn.onclick =
         startCamera;
 }
@@ -742,55 +695,8 @@ if (targetBtn) {
 }
 
 
-if (signBtn) {
-
-    signBtn.onclick =
-        () => {
-
-            signLanguage =
-                !signLanguage;
-
-
-            signBtn.textContent =
-                signLanguage
-                    ? "SIGN LANGUAGE ON"
-                    : "SIGN LANGUAGE OFF";
-        };
-}
-
-
-if (shapeBtn) {
-
-    shapeBtn.onclick =
-        () => {
-
-            shapesEnabled =
-                !shapesEnabled;
-
-
-            shapeBtn.textContent =
-                shapesEnabled
-                    ? "SHAPES ON"
-                    : "SHAPES OFF";
-
-
-            if (!shapesEnabled) {
-
-                drawingShape =
-                    false;
-
-                currentPath =
-                    [];
-
-                grabbedShape =
-                    null;
-            }
-        };
-}
-
-
 /* =========================================================
-   FACE PRIVACY BUTTON
+   FACE PRIVACY
 ========================================================= */
 
 if (privacyBtn) {
@@ -798,18 +704,12 @@ if (privacyBtn) {
     privacyBtn.onclick =
         async () => {
 
-            if (fpsBoost) {
-                return;
-            }
+            if (fpsBoost) return;
 
 
             const modes = [
                 "OFF",
-                "BLUR",
-                "PIXEL",
-                "REDACT",
-                "SCAN",
-                "BOX"
+                "PIXEL"
             ];
 
 
@@ -819,28 +719,23 @@ if (privacyBtn) {
                 );
 
 
-            const next =
+            privacyMode =
                 modes[
                     (index + 1) %
                     modes.length
                 ];
 
 
-            privacyMode =
-                next;
-
-
-            facePrivacy =
-                next !== "OFF";
-
-
             privacyBtn.textContent =
-                `PRIVACY ${next}`;
+                `PRIVACY ${privacyMode}`;
 
 
-            if (facePrivacy) {
+            if (
+                privacyMode !==
+                "OFF"
+            ) {
 
-                await loadFaceModel();
+                await loadFaceDetector();
             }
         };
 }
@@ -855,16 +750,14 @@ if (filterBtn) {
     filterBtn.onclick =
         async () => {
 
-            if (fpsBoost) {
-                return;
-            }
+            if (fpsBoost) return;
 
 
             const filters = [
                 "OFF",
                 "CYBER",
-                "CROWN",
-                "NEON"
+                "SCAN",
+                "CROWN"
             ];
 
 
@@ -890,7 +783,7 @@ if (filterBtn) {
                 "OFF"
             ) {
 
-                await loadFaceModel();
+                await loadFaceDetector();
             }
         };
 }
@@ -905,29 +798,23 @@ if (objectBtn) {
     objectBtn.onclick =
         async () => {
 
-            if (fpsBoost) {
-                return;
-            }
+            if (fpsBoost) return;
 
 
             objectDetection =
                 !objectDetection;
 
 
-            if (
-                objectDetection
-            ) {
+            if (objectDetection) {
 
                 objectBtn.textContent =
-                    "LOADING OBJECT AI...";
+                    "OBJECT AI LOADING...";
 
 
-                await loadObjectModel();
+                await loadObjectDetector();
 
 
-                if (
-                    objectDetector
-                ) {
+                if (objectDetector) {
 
                     objectBtn.textContent =
                         "OBJECT DETECTION ON";
@@ -941,7 +828,6 @@ if (objectBtn) {
                         "OBJECT DETECTION OFF";
                 }
 
-
             } else {
 
                 objectBtn.textContent =
@@ -952,38 +838,81 @@ if (objectBtn) {
 
 
 /* =========================================================
-   MAIN RENDER LOOP
+   SIGN LANGUAGE
+========================================================= */
+
+if (signBtn) {
+
+    signBtn.onclick =
+        () => {
+
+            signLanguage =
+                !signLanguage;
+
+
+            signBtn.textContent =
+                signLanguage
+                    ? "SIGN LANGUAGE ON"
+                    : "SIGN LANGUAGE OFF";
+        };
+}
+
+
+/* =========================================================
+   SHAPES
+========================================================= */
+
+if (shapeBtn) {
+
+    shapeBtn.onclick =
+        () => {
+
+            shapesEnabled =
+                !shapesEnabled;
+
+
+            shapeBtn.textContent =
+                shapesEnabled
+                    ? "SHAPES ON"
+                    : "SHAPES OFF";
+        };
+}
+
+
+/* =========================================================
+   MAIN LOOP
 ========================================================= */
 
 function render(timestamp) {
 
-    if (!cameraRunning) {
-        return;
-    }
+    if (!cameraRunning) return;
 
 
     /*
-        ALWAYS draw camera first.
+        CAMERA
     */
 
     drawCamera();
 
 
     /*
-        HAND TRACKING HAS HIGHEST PRIORITY.
+        HAND AI = TOP PRIORITY
     */
 
-    runHands(timestamp);
+    if (handTracking) {
+
+        runHands(timestamp);
+    }
 
 
     /*
-        Only run face when actually required.
+        FACE AI
     */
 
     if (
         !fpsBoost &&
         (
-            facePrivacy ||
+            privacyMode !== "OFF" ||
             faceFilter !== "OFF"
         )
     ) {
@@ -993,7 +922,7 @@ function render(timestamp) {
 
 
     /*
-        Object detector only when enabled.
+        OBJECT AI
     */
 
     if (
@@ -1006,7 +935,7 @@ function render(timestamp) {
 
 
     /*
-        Visuals.
+        FACE EFFECTS
     */
 
     if (!fpsBoost) {
@@ -1020,13 +949,29 @@ function render(timestamp) {
 
 
     /*
-        HANDS + SHAPES ALWAYS DRAW.
+        MAIN NEW FEATURE:
+        HAND VFX
     */
 
-    drawShapes();
+    if (
+        shapesEnabled &&
+        handTracking
+    ) {
+
+        drawHandVFX(timestamp);
+    }
+
+
+    /*
+        HAND SKELETON
+    */
 
     drawHands();
 
+
+    /*
+        FPS
+    */
 
     updateFPS();
 
@@ -1038,7 +983,7 @@ function render(timestamp) {
 
 
 /* =========================================================
-   CAMERA
+   CAMERA DRAW
 ========================================================= */
 
 function drawCamera() {
@@ -1047,14 +992,13 @@ function drawCamera() {
 
 
     /*
-        Mirror front camera.
+        Mirror the front camera.
     */
 
     ctx.translate(
         canvas.width,
         0
     );
-
 
     ctx.scale(
         -1,
@@ -1076,29 +1020,24 @@ function drawCamera() {
 
 
 /* =========================================================
-   HAND AI
+   HAND DETECTION
 ========================================================= */
 
 function runHands(timestamp) {
 
-    if (
-        !handTracking ||
-        !gestureRecognizer
-    ) {
-        return;
-    }
+    if (!gestureRecognizer) return;
 
 
     if (
         timestamp -
-        lastHandDetection <
-        performanceSettings.hand
+        lastHandTime <
+        performance.hands
     ) {
         return;
     }
 
 
-    lastHandDetection =
+    lastHandTime =
         timestamp;
 
 
@@ -1112,7 +1051,7 @@ function runHands(timestamp) {
                 );
 
 
-        processHands();
+        updateGesture();
 
 
     } catch (error) {
@@ -1126,38 +1065,35 @@ function runHands(timestamp) {
 
 
 /* =========================================================
-   FACE AI
+   FACE DETECTION
 ========================================================= */
 
 function runFace(timestamp) {
 
-    if (!faceLandmarker) {
-        return;
-    }
+    if (!faceDetector) return;
 
 
     if (
         timestamp -
-        lastFaceDetection <
-        performanceSettings.face
+        lastFaceTime <
+        performance.face
     ) {
         return;
     }
 
 
-    lastFaceDetection =
+    lastFaceTime =
         timestamp;
 
 
     try {
 
         faceResults =
-            faceLandmarker
+            faceDetector
                 .detectForVideo(
                     video,
                     timestamp
                 );
-
 
     } catch (error) {
 
@@ -1170,26 +1106,24 @@ function runFace(timestamp) {
 
 
 /* =========================================================
-   OBJECT AI
+   OBJECT DETECTION
 ========================================================= */
 
 function runObjects(timestamp) {
 
-    if (!objectDetector) {
-        return;
-    }
+    if (!objectDetector) return;
 
 
     if (
         timestamp -
-        lastObjectDetection <
-        performanceSettings.object
+        lastObjectTime <
+        performance.objects
     ) {
         return;
     }
 
 
-    lastObjectDetection =
+    lastObjectTime =
         timestamp;
 
 
@@ -1202,7 +1136,6 @@ function runObjects(timestamp) {
                     timestamp
                 );
 
-
     } catch (error) {
 
         console.error(
@@ -1214,10 +1147,109 @@ function runObjects(timestamp) {
 
 
 /* =========================================================
-   PROCESS HANDS
+   GESTURE DISPLAY
 ========================================================= */
 
-function processHands() {
+function updateGesture() {
+
+    if (
+        !handResults ||
+        !handResults.gestures
+    ) {
+
+        setGesture(
+            "NONE"
+        );
+
+        return;
+    }
+
+
+    const hands =
+        handResults.gestures;
+
+
+    if (!hands.length) {
+
+        setGesture(
+            "NONE"
+        );
+
+        return;
+    }
+
+
+    /*
+        MediaPipe's built-in gesture.
+    */
+
+    const first =
+        hands[0]?.[0];
+
+
+    let gesture =
+        first?.categoryName ||
+        "TRACKING";
+
+
+    /*
+        Improve naming.
+    */
+
+    const names = {
+
+        Open_Palm:
+            "OPEN PALM",
+
+        Closed_Fist:
+            "FIST",
+
+        Pointing_Up:
+            "POINT",
+
+        Thumb_Up:
+            "THUMBS UP",
+
+        Thumb_Down:
+            "THUMBS DOWN",
+
+        Victory:
+            "VICTORY",
+
+        ILoveYou:
+            "I LOVE YOU"
+    };
+
+
+    gesture =
+        names[gesture] ||
+        gesture;
+
+
+    setGesture(
+        gesture
+    );
+}
+
+
+/* =========================================================
+   SET GESTURE UI
+========================================================= */
+
+function setGesture(value) {
+
+    if (!gestureDisplay) return;
+
+    gestureDisplay.textContent =
+        `GESTURE // ${value}`;
+}
+
+
+/* =========================================================
+   THE NEW SHAPE SYSTEM
+========================================================= */
+
+function drawHandVFX(timestamp) {
 
     const hands =
         handResults?.landmarks ||
@@ -1226,543 +1258,802 @@ function processHands() {
 
     if (!hands.length) {
 
-        if (drawingShape) {
-
-            finishShape();
-        }
-
-
-        pinchActive =
-            false;
+        setShapeStatus(
+            "VFX // WAITING FOR HANDS"
+        );
 
         return;
     }
 
 
     /*
-        First hand.
+        ONE HAND
+        = small floating energy shape
     */
 
-    const hand =
-        hands[0];
+    if (hands.length === 1) {
+
+        const hand =
+            hands[0];
 
 
-    const index =
-        getPoint(
-            hand[8]
-        );
+        const index =
+            point(hand[8]);
 
 
-    const thumb =
-        getPoint(
-            hand[4]
-        );
+        const thumb =
+            point(hand[4]);
 
 
-    /*
-        Pinch detection.
-    */
-
-    const pinchDistance =
-        Math.hypot(
-            hand[4].x -
-            hand[8].x,
-
-            hand[4].y -
-            hand[8].y
-        );
+        const palm =
+            point(hand[9]);
 
 
-    const pinch =
-        pinchDistance <
-        0.075;
+        const pinch =
+            distance(
+                index,
+                thumb
+            ) <
+            45;
 
 
-    /*
-        Gesture Recognizer result.
-    */
+        if (pinch) {
 
-    let gesture =
-        "TRACKING";
-
-
-    if (
-        handResults.gestures &&
-        handResults.gestures[0] &&
-        handResults.gestures[0][0]
-    ) {
-
-        gesture =
-            handResults.gestures[0][0]
-                .categoryName ||
-            "TRACKING";
-    }
-
-
-    if (pinch) {
-
-        gesture =
-            "PINCH";
-    }
-
-
-    /*
-        Update existing UI if available.
-    */
-
-    const gestureElement =
-        get(
-            "gesture",
-            "gestureText"
-        );
-
-
-    if (gestureElement) {
-
-        gestureElement.textContent =
-            gesture;
-    }
-
-
-    /*
-        Sign language.
-    */
-
-    if (signLanguage) {
-
-        const sign =
-            detectSign(
-                hand
+            drawSingleHandPortal(
+                palm,
+                index,
+                timestamp
             );
 
 
-        const signElement =
-            get(
-                "sign",
-                "signText"
+            setShapeStatus(
+                "VFX // PINCH PORTAL"
             );
-
-
-        if (signElement) {
-
-            signElement.textContent =
-                sign;
-        }
-    }
-
-
-    /*
-        SHAPE SYSTEM
-    */
-
-    if (shapesEnabled) {
-
-        handleShape(
-            index,
-            pinch
-        );
-    }
-
-
-    lastHandPoint =
-        index;
-}
-
-
-/* =========================================================
-   SHAPE CREATION
-========================================================= */
-
-function handleShape(
-    point,
-    pinch
-) {
-
-    /*
-        PINCH START
-    */
-
-    if (
-        pinch &&
-        !pinchActive
-    ) {
-
-        const existing =
-            findShape(
-                point
-            );
-
-
-        if (existing) {
-
-            grabbedShape =
-                existing;
-
-
-            grabbedShape.offsetX =
-                point.x -
-                grabbedShape.x;
-
-
-            grabbedShape.offsetY =
-                point.y -
-                grabbedShape.y;
-
 
         } else {
 
-            /*
-                Start drawing a NEW
-                shape with the finger.
-            */
-
-            drawingShape =
-                true;
+            drawSingleHandOrb(
+                index,
+                timestamp
+            );
 
 
-            currentPath = [
-                {
-                    x: point.x,
-                    y: point.y
-                }
-            ];
-        }
-    }
-
-
-    /*
-        WHILE PINCHING
-    */
-
-    if (pinch) {
-
-        /*
-            Move existing shape.
-        */
-
-        if (grabbedShape) {
-
-            grabbedShape.x =
-                point.x -
-                grabbedShape.offsetX;
-
-
-            grabbedShape.y =
-                point.y -
-                grabbedShape.offsetY;
-
-
+            setShapeStatus(
+                "VFX // HAND FIELD"
+            );
         }
 
-        /*
-            OR draw a new shape.
-        */
-
-        else if (drawingShape) {
-
-            if (
-                !lastHandPoint ||
-                Math.hypot(
-                    point.x -
-                    lastHandPoint.x,
-
-                    point.y -
-                    lastHandPoint.y
-                ) > 3
-            ) {
-
-                currentPath.push({
-                    x: point.x,
-                    y: point.y
-                });
-            }
-        }
-    }
-
-
-    /*
-        PINCH RELEASE
-    */
-
-    if (
-        !pinch &&
-        pinchActive
-    ) {
-
-        if (grabbedShape) {
-
-            grabbedShape =
-                null;
-
-        } else if (drawingShape) {
-
-            finishShape();
-        }
-    }
-
-
-    pinchActive =
-        pinch;
-}
-
-
-/* =========================================================
-   FINISH SHAPE
-========================================================= */
-
-function finishShape() {
-
-    if (
-        currentPath.length <
-        5
-    ) {
-
-        currentPath =
-            [];
-
-        drawingShape =
-            false;
 
         return;
     }
 
 
-    const bounds =
-        getBounds(
-            currentPath
+    /*
+        TWO HANDS
+        = MAIN REFERENCE-STYLE EFFECT
+    */
+
+    const left =
+        getPalmCenter(
+            hands[0]
+        );
+
+
+    const right =
+        getPalmCenter(
+            hands[1]
+        );
+
+
+    const center = {
+
+        x:
+            (left.x +
+            right.x) / 2,
+
+        y:
+            (left.y +
+            right.y) / 2
+    };
+
+
+    const dx =
+        right.x -
+        left.x;
+
+
+    const dy =
+        right.y -
+        left.y;
+
+
+    const distanceBetween =
+        Math.hypot(
+            dx,
+            dy
+        );
+
+
+    const angle =
+        Math.atan2(
+            dy,
+            dx
+        );
+
+
+    vfxRotation =
+        angle;
+
+
+    /*
+        Smooth energy based on
+        distance between hands.
+    */
+
+    const targetEnergy =
+        Math.min(
+            1,
+            distanceBetween /
+            450
+        );
+
+
+    vfxEnergy +=
+        (
+            targetEnergy -
+            vfxEnergy
+        ) * 0.12;
+
+
+    vfxPulse =
+        Math.sin(
+            timestamp * 0.006
         );
 
 
     /*
-        Very small gesture =
-        circle.
+        Detect gestures.
+    */
+
+    const gesture1 =
+        getGesture(0);
+
+
+    const gesture2 =
+        getGesture(1);
+
+
+    /*
+        DIFFERENT HAND COMBINATIONS
     */
 
     if (
-        bounds.width < 40 &&
-        bounds.height < 40
+        gesture1 === "Victory" ||
+        gesture2 === "Victory"
     ) {
 
-        shapes.push({
+        vfxMode =
+            "TRIANGLE";
 
-            type:
-                "circle",
+    } else if (
+        gesture1 === "Closed_Fist" &&
+        gesture2 === "Closed_Fist"
+    ) {
 
-            x:
-                bounds.cx,
+        vfxMode =
+            "CORE";
 
-            y:
-                bounds.cy,
+    } else if (
+        isPinching(hands[0]) &&
+        isPinching(hands[1])
+    ) {
 
-            radius:
-                25
-        });
+        vfxMode =
+            "PORTAL";
+
+    } else if (
+        gesture1 === "Open_Palm" ||
+        gesture2 === "Open_Palm"
+    ) {
+
+        vfxMode =
+            "RIBBON";
+
+    } else {
+
+        vfxMode =
+            "DIAMOND";
+    }
+
+
+    /*
+        DRAW THE ACTUAL VIRTUAL OBJECT
+    */
+
+    ctx.save();
+
+    ctx.translate(
+        center.x,
+        center.y
+    );
+
+
+    ctx.rotate(
+        angle
+    );
+
+
+    const width =
+        Math.max(
+            80,
+            distanceBetween
+        );
+
+
+    const height =
+        Math.max(
+            45,
+            distanceBetween *
+            0.32
+        );
+
+
+    /*
+        Outer geometry
+    */
+
+    drawVFXFrame(
+        width,
+        height,
+        vfxMode,
+        timestamp
+    );
+
+
+    /*
+        Inner geometry
+    */
+
+    drawVFXCore(
+        width,
+        height,
+        vfxMode,
+        timestamp
+    );
+
+
+    /*
+        connecting lines to hands
+    */
+
+    ctx.restore();
+
+
+    drawHandConnections(
+        left,
+        right,
+        center,
+        timestamp
+    );
+
+
+    setShapeStatus(
+        `VFX // ${vfxMode}`
+    );
+}
+
+
+/* =========================================================
+   VFX OUTER FRAME
+========================================================= */
+
+function drawVFXFrame(
+    width,
+    height,
+    mode,
+    timestamp
+) {
+
+    ctx.save();
+
+
+    const pulse =
+        1 +
+        Math.sin(
+            timestamp * 0.005
+        ) * 0.04;
+
+
+    ctx.scale(
+        pulse,
+        pulse
+    );
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.85)";
+
+
+    ctx.lineWidth =
+        fpsBoost
+            ? 2
+            : 3;
+
+
+    ctx.setLineDash([
+        10,
+        8
+    ]);
+
+
+    if (
+        mode ===
+        "TRIANGLE"
+    ) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            0,
+            -height
+        );
+
+        ctx.lineTo(
+            width,
+            height
+        );
+
+        ctx.lineTo(
+            -width,
+            height
+        );
+
+        ctx.closePath();
+
+        ctx.stroke();
+
+
+    } else if (
+        mode ===
+        "CORE"
+    ) {
+
+        ctx.beginPath();
+
+        ctx.rect(
+            -width * 0.35,
+            -height,
+            width * 0.7,
+            height * 2
+        );
+
+        ctx.stroke();
+
+
+    } else if (
+        mode ===
+        "PORTAL"
+    ) {
+
+        ctx.beginPath();
+
+        ctx.ellipse(
+            0,
+            0,
+            width * 0.5,
+            height,
+            0,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.stroke();
+
+
+        ctx.beginPath();
+
+        ctx.ellipse(
+            0,
+            0,
+            width * 0.34,
+            height * 0.65,
+            0,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.stroke();
+
+
+    } else if (
+        mode ===
+        "RIBBON"
+    ) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            -width,
+            0
+        );
+
+
+        ctx.quadraticCurveTo(
+            -width * 0.3,
+            -height * 2,
+            0,
+            0
+        );
+
+
+        ctx.quadraticCurveTo(
+            width * 0.3,
+            height * 2,
+            width,
+            0
+        );
+
+
+        ctx.stroke();
 
 
     } else {
 
         /*
-            Save the ACTUAL drawn shape.
+            DIAMOND
         */
-
-        shapes.push({
-
-            type:
-                "polygon",
-
-            points:
-                simplifyPath(
-                    currentPath,
-                    8
-                ),
-
-            x:
-                bounds.cx,
-
-            y:
-                bounds.cy,
-
-            centerX:
-                bounds.cx,
-
-            centerY:
-                bounds.cy
-        });
-    }
-
-
-    currentPath =
-        [];
-
-    drawingShape =
-        false;
-}
-
-
-/* =========================================================
-   DRAW SHAPES
-========================================================= */
-
-function drawShapes() {
-
-    /*
-        Currently drawing.
-    */
-
-    if (
-        drawingShape &&
-        currentPath.length > 1
-    ) {
-
-        ctx.save();
 
         ctx.beginPath();
 
-
         ctx.moveTo(
-            currentPath[0].x,
-            currentPath[0].y
+            -width,
+            0
         );
 
+        ctx.lineTo(
+            0,
+            -height
+        );
 
-        for (
-            let i = 1;
-            i < currentPath.length;
-            i++
-        ) {
+        ctx.lineTo(
+            width,
+            0
+        );
 
-            ctx.lineTo(
-                currentPath[i].x,
-                currentPath[i].y
-            );
-        }
+        ctx.lineTo(
+            0,
+            height
+        );
 
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.9)";
-
-        ctx.lineWidth =
-            fpsBoost
-                ? 2
-                : 3;
-
+        ctx.closePath();
 
         ctx.stroke();
-
-        ctx.restore();
     }
 
 
-    /*
-        Finished shapes.
-    */
-
-    for (
-        const shape
-        of shapes
-    ) {
-
-        ctx.save();
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.85)";
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.04)";
-
-        ctx.lineWidth = 2;
+    ctx.setLineDash([]);
 
 
-        if (
-            shape.type ===
-            "circle"
-        ) {
-
-            ctx.beginPath();
-
-            ctx.arc(
-                shape.x,
-                shape.y,
-                shape.radius,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.fill();
-
-            ctx.stroke();
-
-
-        } else {
-
-            ctx.beginPath();
-
-
-            for (
-                let i = 0;
-                i < shape.points.length;
-                i++
-            ) {
-
-                const p =
-                    shape.points[i];
-
-
-                const x =
-                    shape.x +
-                    (
-                        p.x -
-                        shape.centerX
-                    );
-
-
-                const y =
-                    shape.y +
-                    (
-                        p.y -
-                        shape.centerY
-                    );
-
-
-                if (i === 0) {
-
-                    ctx.moveTo(
-                        x,
-                        y
-                    );
-
-                } else {
-
-                    ctx.lineTo(
-                        x,
-                        y
-                    );
-                }
-            }
-
-
-            ctx.closePath();
-
-            ctx.fill();
-
-            ctx.stroke();
-        }
-
-
-        ctx.restore();
-    }
+    ctx.restore();
 }
 
 
 /* =========================================================
-   HAND DRAWING
+   VFX CORE
+========================================================= */
+
+function drawVFXCore(
+    width,
+    height,
+    mode,
+    timestamp
+) {
+
+    ctx.save();
+
+
+    const pulse =
+        1 +
+        Math.sin(
+            timestamp * 0.009
+        ) * 0.12;
+
+
+    ctx.scale(
+        pulse,
+        pulse
+    );
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.95)";
+
+
+    ctx.lineWidth =
+        2;
+
+
+    /*
+        Central energy lines.
+    */
+
+    for (
+        let i = -2;
+        i <= 2;
+        i++
+    ) {
+
+        const offset =
+            i *
+            height *
+            0.22;
+
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            -width * 0.5,
+            offset
+        );
+
+        ctx.lineTo(
+            width * 0.5,
+            -offset
+        );
+
+        ctx.stroke();
+    }
+
+
+    /*
+        Center core.
+    */
+
+    const radius =
+        Math.max(
+            8,
+            height *
+            0.16
+        );
+
+
+    ctx.beginPath();
+
+    ctx.arc(
+        0,
+        0,
+        radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+
+
+    /*
+        Rotating mini square.
+    */
+
+    ctx.rotate(
+        timestamp * 0.001
+    );
+
+
+    ctx.strokeRect(
+        -radius * 0.65,
+        -radius * 0.65,
+        radius * 1.3,
+        radius * 1.3
+    );
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   HAND CONNECTIONS
+========================================================= */
+
+function drawHandConnections(
+    left,
+    right,
+    center,
+    timestamp
+) {
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.35)";
+
+
+    ctx.lineWidth =
+        1.5;
+
+
+    ctx.setLineDash([
+        6,
+        10
+    ]);
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        left.x,
+        left.y
+    );
+
+    ctx.lineTo(
+        center.x,
+        center.y
+    );
+
+    ctx.lineTo(
+        right.x,
+        right.y
+    );
+
+    ctx.stroke();
+
+
+    ctx.setLineDash([]);
+
+
+    /*
+        Small tracking points.
+    */
+
+    for (
+        const p
+        of [left, right]
+    ) {
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            5 +
+            Math.sin(
+                timestamp * 0.006
+            ) * 2,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.stroke();
+    }
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   SINGLE HAND ORB
+========================================================= */
+
+function drawSingleHandOrb(
+    position,
+    timestamp
+) {
+
+    const radius =
+        22 +
+        Math.sin(
+            timestamp * 0.006
+        ) * 5;
+
+
+    ctx.save();
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.8)";
+
+    ctx.lineWidth = 2;
+
+
+    ctx.beginPath();
+
+    ctx.arc(
+        position.x,
+        position.y,
+        radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.arc(
+        position.x,
+        position.y,
+        radius * 0.45,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   SINGLE HAND PORTAL
+========================================================= */
+
+function drawSingleHandPortal(
+    palm,
+    finger,
+    timestamp
+) {
+
+    const radius =
+        35 +
+        Math.sin(
+            timestamp * 0.01
+        ) * 6;
+
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.9)";
+
+
+    ctx.lineWidth = 2;
+
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        finger.x,
+        finger.y,
+        radius,
+        radius * 0.55,
+        timestamp * 0.002,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        palm.x,
+        palm.y
+    );
+
+    ctx.lineTo(
+        finger.x,
+        finger.y
+    );
+
+    ctx.stroke();
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   HAND SKELETON
 ========================================================= */
 
 function drawHands() {
 
-    if (!handTracking) {
-        return;
-    }
+    if (!handTracking) return;
 
 
     const hands =
@@ -1777,15 +2068,30 @@ function drawHands() {
 
         const connections = [
 
-            [0,1],[1,2],[2,3],[3,4],
+            [0,1],
+            [1,2],
+            [2,3],
+            [3,4],
 
-            [0,5],[5,6],[6,7],[7,8],
+            [0,5],
+            [5,6],
+            [6,7],
+            [7,8],
 
-            [5,9],[9,10],[10,11],[11,12],
+            [5,9],
+            [9,10],
+            [10,11],
+            [11,12],
 
-            [9,13],[13,14],[14,15],[15,16],
+            [9,13],
+            [13,14],
+            [14,15],
+            [15,16],
 
-            [13,17],[17,18],[18,19],[19,20],
+            [13,17],
+            [17,18],
+            [18,19],
+            [19,20],
 
             [0,17]
         ];
@@ -1793,11 +2099,6 @@ function drawHands() {
 
         ctx.save();
 
-
-        /*
-            In FPS BOOST mode use a simpler
-            skeleton.
-        */
 
         ctx.strokeStyle =
             "rgba(255,255,255,0.65)";
@@ -1815,14 +2116,10 @@ function drawHands() {
         ) {
 
             const p1 =
-                getPoint(
-                    hand[a]
-                );
+                point(hand[a]);
 
             const p2 =
-                getPoint(
-                    hand[b]
-                );
+                point(hand[b]);
 
 
             ctx.beginPath();
@@ -1842,7 +2139,8 @@ function drawHands() {
 
 
         /*
-            Don't draw every joint in boost mode.
+            Don't overload mobile GPU
+            with every joint in boost.
         */
 
         if (!fpsBoost) {
@@ -1856,15 +2154,15 @@ function drawHands() {
                 of hand
             ) {
 
-                const point =
-                    getPoint(p);
+                const pos =
+                    point(p);
 
 
                 ctx.beginPath();
 
                 ctx.arc(
-                    point.x,
-                    point.y,
+                    pos.x,
+                    pos.y,
                     2,
                     0,
                     Math.PI * 2
@@ -1880,15 +2178,11 @@ function drawHands() {
         */
 
         const index =
-            getPoint(
-                hand[8]
-            );
+            point(hand[8]);
 
 
         ctx.strokeStyle =
-            "rgba(255,255,255,0.95)";
-
-        ctx.lineWidth = 2;
+            "rgba(255,255,255,0.9)";
 
 
         ctx.beginPath();
@@ -1905,52 +2199,7 @@ function drawHands() {
 
 
         /*
-            Pinch indicator.
-        */
-
-        const pinch =
-            Math.hypot(
-                hand[4].x -
-                hand[8].x,
-
-                hand[4].y -
-                hand[8].y
-            ) < 0.075;
-
-
-        if (pinch) {
-
-            const thumb =
-                getPoint(
-                    hand[4]
-                );
-
-
-            ctx.beginPath();
-
-            ctx.arc(
-                (
-                    index.x +
-                    thumb.x
-                ) / 2,
-
-                (
-                    index.y +
-                    thumb.y
-                ) / 2,
-
-                10,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.stroke();
-        }
-
-
-        /*
-            Target box only when not using
-            FPS boost.
+            Target box.
         */
 
         if (
@@ -1959,16 +2208,11 @@ function drawHands() {
         ) {
 
             const points =
-                hand.map(
-                    p =>
-                        getPoint(p)
-                );
+                hand.map(point);
 
 
             const bounds =
-                getBounds(
-                    points
-                );
+                getBounds(points);
 
 
             ctx.setLineDash([
@@ -1978,7 +2222,7 @@ function drawHands() {
 
 
             ctx.strokeStyle =
-                "rgba(255,255,255,0.35)";
+                "rgba(255,255,255,0.3)";
 
 
             ctx.strokeRect(
@@ -1999,294 +2243,220 @@ function drawHands() {
 
 
 /* =========================================================
-   FACE PRIVACY
+   FACE PIXEL PRIVACY
+   KEEPING THE STYLE YOU LIKED
 ========================================================= */
 
 function drawFacePrivacy() {
 
     if (
-        !facePrivacy ||
-        !faceResults
+        privacyMode !==
+        "PIXEL"
     ) {
         return;
     }
 
 
-    const faces =
-        faceResults.faceLandmarks ||
-        [];
+    if (
+        !faceResults ||
+        !faceResults.detections
+    ) {
+        return;
+    }
 
 
     for (
-        const face
-        of faces
+        const detection
+        of faceResults.detections
     ) {
 
-        const points =
-            face.map(
-                p =>
-                    getPoint(p)
-            );
+        const box =
+            detection.boundingBox;
 
 
-        const bounds =
-            getBounds(
-                points
-            );
+        if (!box) continue;
 
 
-        const padX =
-            bounds.width *
-            0.15;
+        /*
+            FaceDetector uses the original
+            camera coordinates.
 
-
-        const padY =
-            bounds.height *
-            0.20;
-
+            Convert to mirrored canvas.
+        */
 
         const x =
-            bounds.minX -
-            padX;
+            canvas.width -
+            box.originX -
+            box.width;
 
 
         const y =
-            bounds.minY -
-            padY;
+            box.originY;
 
 
-        const width =
-            bounds.width +
-            padX * 2;
+        const w =
+            box.width;
 
 
-        const height =
-            bounds.height +
-            padY * 2;
+        const h =
+            box.height;
 
 
-        if (
-            privacyMode ===
-            "BLUR"
-        ) {
+        const padX =
+            w * 0.12;
 
-            /*
-                Lightweight privacy effect.
-            */
 
-            ctx.save();
+        const padY =
+            h * 0.15;
 
-            ctx.fillStyle =
-                "rgba(0,0,0,0.45)";
 
-            ctx.fillRect(
-                x,
-                y,
-                width,
-                height
+        const px =
+            x - padX;
+
+
+        const py =
+            y - padY;
+
+
+        const pw =
+            w + padX * 2;
+
+
+        const ph =
+            h + padY * 2;
+
+
+        /*
+            Pixel blocks.
+        */
+
+        const block =
+            Math.max(
+                12,
+                Math.floor(
+                    w / 8
+                )
             );
 
 
-            ctx.restore();
-        }
+        ctx.save();
 
 
-        if (
-            privacyMode ===
-            "PIXEL"
+        /*
+            Dark translucent base.
+        */
+
+        ctx.fillStyle =
+            "rgba(0,0,0,0.22)";
+
+
+        ctx.fillRect(
+            px,
+            py,
+            pw,
+            ph
+        );
+
+
+        /*
+            Pixel grid.
+        */
+
+        for (
+            let yy = py;
+            yy < py + ph;
+            yy += block
         ) {
-
-            ctx.save();
-
-            ctx.fillStyle =
-                "rgba(0,0,0,0.75)";
-
-            ctx.fillRect(
-                x,
-                y,
-                width,
-                height
-            );
-
-
-            /*
-                Pixel-style grid.
-            */
-
-            ctx.strokeStyle =
-                "rgba(255,255,255,0.25)";
-
 
             for (
-                let xx = x;
-                xx < x + width;
-                xx += 8
+                let xx = px;
+                xx < px + pw;
+                xx += block
             ) {
 
-                ctx.beginPath();
+                const even =
+                    (
+                        Math.floor(
+                            (xx - px) /
+                            block
+                        ) +
+                        Math.floor(
+                            (yy - py) /
+                            block
+                        )
+                    ) % 2;
 
-                ctx.moveTo(
+
+                ctx.fillStyle =
+                    even
+                        ? "rgba(30,30,30,0.78)"
+                        : "rgba(100,100,100,0.65)";
+
+
+                ctx.fillRect(
                     xx,
-                    y
+                    yy,
+                    block,
+                    block
                 );
-
-                ctx.lineTo(
-                    xx,
-                    y + height
-                );
-
-                ctx.stroke();
             }
-
-
-            for (
-                let yy = y;
-                yy < y + height;
-                yy += 8
-            ) {
-
-                ctx.beginPath();
-
-                ctx.moveTo(
-                    x,
-                    yy
-                );
-
-                ctx.lineTo(
-                    x + width,
-                    yy
-                );
-
-                ctx.stroke();
-            }
-
-
-            ctx.restore();
         }
 
 
-        if (
-            privacyMode ===
-            "REDACT"
-        ) {
+        /*
+            SPECTRA label.
+        */
 
-            ctx.save();
-
-            ctx.fillStyle =
-                "rgba(0,0,0,0.90)";
-
-            ctx.fillRect(
-                x,
-                y,
-                width,
-                height
-            );
+        ctx.fillStyle =
+            "rgba(255,255,255,0.45)";
 
 
-            ctx.fillStyle =
-                "#ffffff";
-
-            ctx.font =
-                "bold 12px monospace";
-
-            ctx.fillText(
-                "FACE HIDDEN",
-                x + 10,
-                y + 20
-            );
+        ctx.font =
+            "10px monospace";
 
 
-            ctx.restore();
-        }
+        ctx.fillText(
+            "SPECTRA VISION",
+            px + 10,
+            py + ph / 2
+        );
 
 
-        if (
-            privacyMode ===
-            "SCAN"
-        ) {
+        /*
+            Corner brackets.
+        */
 
-            ctx.save();
-
-            ctx.fillStyle =
-                "rgba(0,0,0,0.55)";
-
-            ctx.fillRect(
-                x,
-                y,
-                width,
-                height
-            );
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.9)";
 
 
-            ctx.strokeStyle =
-                "rgba(255,255,255,0.9)";
-
-            ctx.lineWidth = 2;
+        ctx.lineWidth = 2;
 
 
-            drawCorners(
-                x,
-                y,
-                width,
-                height
-            );
+        drawCorners(
+            px,
+            py,
+            pw,
+            ph
+        );
 
 
-            ctx.font =
-                "10px monospace";
-
-            ctx.fillStyle =
-                "#ffffff";
+        ctx.fillStyle =
+            "#ffffff";
 
 
-            ctx.fillText(
-                "FACE // SCANNING",
-                x,
-                y - 6
-            );
+        ctx.font =
+            "11px monospace";
 
 
-            ctx.restore();
-        }
+        ctx.fillText(
+            "FACE // PIXEL",
+            px,
+            py - 8
+        );
 
 
-        if (
-            privacyMode ===
-            "BOX"
-        ) {
-
-            ctx.save();
-
-            ctx.strokeStyle =
-                "rgba(255,255,255,0.9)";
-
-            ctx.lineWidth = 2;
-
-
-            drawCorners(
-                x,
-                y,
-                width,
-                height
-            );
-
-
-            ctx.font =
-                "10px monospace";
-
-            ctx.fillStyle =
-                "#ffffff";
-
-
-            ctx.fillText(
-                "FACE TRACK",
-                x,
-                y - 6
-            );
-
-
-            ctx.restore();
-        }
+        ctx.restore();
     }
 }
 
@@ -2305,52 +2475,127 @@ function drawFaceFilter() {
     }
 
 
-    if (!faceResults) {
+    if (
+        !faceResults ||
+        !faceResults.detections
+    ) {
         return;
     }
 
 
-    const faces =
-        faceResults.faceLandmarks ||
-        [];
-
-
     for (
-        const face
-        of faces
+        const detection
+        of faceResults.detections
     ) {
 
-        const top =
-            getPoint(
-                face[10]
-            );
+        const box =
+            detection.boundingBox;
 
 
-        const left =
-            getPoint(
-                face[234]
-            );
+        if (!box) continue;
 
 
-        const right =
-            getPoint(
-                face[454]
-            );
+        const x =
+            canvas.width -
+            box.originX -
+            box.width;
 
 
-        const width =
-            Math.abs(
-                right.x -
-                left.x
-            );
+        const y =
+            box.originY;
+
+
+        const w =
+            box.width;
+
+
+        const h =
+            box.height;
+
+
+        ctx.save();
 
 
         if (
             faceFilter ===
-            "CROWN"
+            "CYBER"
         ) {
 
-            ctx.save();
+            ctx.strokeStyle =
+                "rgba(255,255,255,0.9)";
+
+            ctx.lineWidth = 2;
+
+
+            ctx.strokeRect(
+                x - 8,
+                y - 8,
+                w + 16,
+                h + 16
+            );
+
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                x,
+                y + h * 0.45
+            );
+
+            ctx.lineTo(
+                x + w,
+                y + h * 0.45
+            );
+
+            ctx.stroke();
+
+
+        } else if (
+            faceFilter ===
+            "SCAN"
+        ) {
+
+            ctx.strokeStyle =
+                "rgba(255,255,255,0.85)";
+
+            ctx.lineWidth = 2;
+
+
+            for (
+                let i = 0;
+                i < 5;
+                i++
+            ) {
+
+                const yy =
+                    y +
+                    (
+                        h *
+                        i /
+                        5
+                    );
+
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    x,
+                    yy
+                );
+
+                ctx.lineTo(
+                    x + w,
+                    yy
+                );
+
+                ctx.stroke();
+            }
+
+
+        } else if (
+            faceFilter ===
+            "CROWN"
+        ) {
 
             ctx.strokeStyle =
                 "rgba(255,255,255,0.9)";
@@ -2361,133 +2606,35 @@ function drawFaceFilter() {
             ctx.beginPath();
 
             ctx.moveTo(
-                top.x -
-                width * 0.45,
-
-                top.y
+                x + w * 0.1,
+                y
             );
 
             ctx.lineTo(
-                top.x -
-                width * 0.25,
-
-                top.y -
-                width * 0.45
+                x + w * 0.25,
+                y - h * 0.3
             );
 
             ctx.lineTo(
-                top.x -
-                width * 0.05,
-
-                top.y -
-                width * 0.15
+                x + w * 0.5,
+                y
             );
 
             ctx.lineTo(
-                top.x,
-
-                top.y -
-                width * 0.55
+                x + w * 0.75,
+                y - h * 0.3
             );
 
             ctx.lineTo(
-                top.x +
-                width * 0.05,
-
-                top.y -
-                width * 0.15
-            );
-
-            ctx.lineTo(
-                top.x +
-                width * 0.25,
-
-                top.y -
-                width * 0.45
-            );
-
-            ctx.lineTo(
-                top.x +
-                width * 0.45,
-
-                top.y
+                x + w * 0.9,
+                y
             );
 
             ctx.stroke();
-
-            ctx.restore();
         }
 
 
-        if (
-            faceFilter ===
-            "CYBER"
-        ) {
-
-            ctx.save();
-
-            ctx.strokeStyle =
-                "rgba(255,255,255,0.9)";
-
-            ctx.lineWidth = 2;
-
-
-            ctx.strokeRect(
-                left.x,
-                top.y -
-                width * 0.1,
-                width * 0.42,
-                width * 0.18
-            );
-
-
-            ctx.strokeRect(
-                right.x -
-                width * 0.42,
-                top.y -
-                width * 0.1,
-                width * 0.42,
-                width * 0.18
-            );
-
-
-            ctx.restore();
-        }
-
-
-        if (
-            faceFilter ===
-            "NEON"
-        ) {
-
-            ctx.save();
-
-            ctx.strokeStyle =
-                "rgba(255,255,255,0.8)";
-
-            ctx.lineWidth = 2;
-
-            ctx.shadowBlur = 18;
-
-            ctx.shadowColor =
-                "rgba(255,255,255,0.9)";
-
-
-            ctx.strokeRect(
-                left.x -
-                width * 0.1,
-
-                top.y -
-                width * 0.15,
-
-                width * 1.2,
-
-                width * 1.35
-            );
-
-
-            ctx.restore();
-        }
+        ctx.restore();
     }
 }
 
@@ -2506,14 +2653,9 @@ function drawObjects() {
     }
 
 
-    const detections =
-        objectResults.detections ||
-        [];
-
-
     for (
         const detection
-        of detections
+        of objectResults.detections || []
     ) {
 
         const box =
@@ -2524,9 +2666,7 @@ function drawObjects() {
             detection.categories?.[0];
 
 
-        if (!box) {
-            continue;
-        }
+        if (!box) continue;
 
 
         const x =
@@ -2541,8 +2681,10 @@ function drawObjects() {
 
         ctx.save();
 
+
         ctx.strokeStyle =
             "rgba(255,255,255,0.8)";
+
 
         ctx.lineWidth = 2;
 
@@ -2582,55 +2724,22 @@ function drawObjects() {
    SIGN LANGUAGE
 ========================================================= */
 
-function detectSign(hand) {
+function getSign(hand) {
 
     const index =
-        fingerExtended(
-            hand,
-            8
-        );
+        fingerUp(hand, 8);
 
 
     const middle =
-        fingerExtended(
-            hand,
-            12
-        );
+        fingerUp(hand, 12);
 
 
     const ring =
-        fingerExtended(
-            hand,
-            16
-        );
+        fingerUp(hand, 16);
 
 
     const pinky =
-        fingerExtended(
-            hand,
-            20
-        );
-
-
-    const count =
-        [
-            index,
-            middle,
-            ring,
-            pinky
-        ].filter(Boolean)
-        .length;
-
-
-    if (
-        index &&
-        !middle &&
-        !ring &&
-        !pinky
-    ) {
-
-        return "D";
-    }
+        fingerUp(hand, 20);
 
 
     if (
@@ -2641,6 +2750,17 @@ function detectSign(hand) {
     ) {
 
         return "V";
+    }
+
+
+    if (
+        index &&
+        !middle &&
+        !ring &&
+        !pinky
+    ) {
+
+        return "POINT";
     }
 
 
@@ -2656,18 +2776,24 @@ function detectSign(hand) {
 
 
     if (
-        count === 0
+        index &&
+        middle &&
+        ring &&
+        pinky
     ) {
 
-        return "FIST";
+        return "OPEN";
     }
 
 
     if (
-        count === 4
+        !index &&
+        !middle &&
+        !ring &&
+        !pinky
     ) {
 
-        return "OPEN";
+        return "FIST";
     }
 
 
@@ -2675,7 +2801,7 @@ function detectSign(hand) {
 }
 
 
-function fingerExtended(
+function fingerUp(
     hand,
     tip
 ) {
@@ -2688,100 +2814,129 @@ function fingerExtended(
 
 
 /* =========================================================
-   FIND SHAPE
+   GET GESTURE
 ========================================================= */
 
-function findShape(point) {
+function getGesture(index) {
 
-    for (
-        let i =
-            shapes.length - 1;
-
-        i >= 0;
-
-        i--
-    ) {
-
-        const shape =
-            shapes[i];
-
-
-        if (
-            shape.type ===
-            "circle"
-        ) {
-
-            const d =
-                Math.hypot(
-                    point.x -
-                    shape.x,
-
-                    point.y -
-                    shape.y
-                );
-
-
-            if (
-                d <
-                shape.radius + 25
-            ) {
-
-                return shape;
-            }
-        }
-
-
-        if (
-            shape.type ===
-            "polygon"
-        ) {
-
-            const bounds =
-                getBounds(
-                    shape.points
-                );
-
-
-            if (
-                point.x >
-                    bounds.minX - 25 &&
-
-                point.x <
-                    bounds.maxX + 25 &&
-
-                point.y >
-                    bounds.minY - 25 &&
-
-                point.y <
-                    bounds.maxY + 25
-            ) {
-
-                return shape;
-            }
-        }
-    }
-
-
-    return null;
+    return (
+        handResults
+            ?.gestures
+            ?.[
+                index
+            ]
+            ?.[
+                0
+            ]
+            ?.categoryName ||
+        "None"
+    );
 }
 
 
 /* =========================================================
-   GET POINT
+   PINCH
 ========================================================= */
 
-function getPoint(p) {
+function isPinching(hand) {
+
+    const thumb =
+        point(hand[4]);
+
+
+    const index =
+        point(hand[8]);
+
+
+    return (
+        distance(
+            thumb,
+            index
+        ) < 45
+    );
+}
+
+
+/* =========================================================
+   PALM CENTER
+========================================================= */
+
+function getPalmCenter(hand) {
+
+    const a =
+        point(hand[0]);
+
+
+    const b =
+        point(hand[5]);
+
+
+    const c =
+        point(hand[9]);
+
+
+    const d =
+        point(hand[17]);
+
 
     return {
 
         x:
-            (1 - p.x) *
+            (
+                a.x +
+                b.x +
+                c.x +
+                d.x
+            ) / 4,
+
+        y:
+            (
+                a.y +
+                b.y +
+                c.y +
+                d.y
+            ) / 4
+    };
+}
+
+
+/* =========================================================
+   LANDMARK → CANVAS
+========================================================= */
+
+function point(p) {
+
+    return {
+
+        /*
+            Mirror X because the camera
+            is mirrored.
+        */
+
+        x:
+            (
+                1 -
+                p.x
+            ) *
             canvas.width,
 
         y:
             p.y *
             canvas.height
     };
+}
+
+
+/* =========================================================
+   DISTANCE
+========================================================= */
+
+function distance(a, b) {
+
+    return Math.hypot(
+        a.x - b.x,
+        a.y - b.y
+    );
 }
 
 
@@ -2842,7 +2997,6 @@ function getBounds(points) {
 
         minX,
         minY,
-
         maxX,
         maxY,
 
@@ -2852,72 +3006,13 @@ function getBounds(points) {
 
         height:
             maxY -
-            minY,
-
-        cx:
-            (minX +
-            maxX) / 2,
-
-        cy:
-            (minY +
-            maxY) / 2
+            minY
     };
 }
 
 
 /* =========================================================
-   SIMPLIFY DRAWING
-========================================================= */
-
-function simplifyPath(
-    points,
-    spacing
-) {
-
-    const result =
-        [points[0]];
-
-
-    let last =
-        points[0];
-
-
-    for (
-        let i = 1;
-        i < points.length;
-        i++
-    ) {
-
-        const d =
-            Math.hypot(
-                points[i].x -
-                last.x,
-
-                points[i].y -
-                last.y
-            );
-
-
-        if (
-            d >= spacing
-        ) {
-
-            result.push(
-                points[i]
-            );
-
-            last =
-                points[i];
-        }
-    }
-
-
-    return result;
-}
-
-
-/* =========================================================
-   FACE CORNERS
+   CORNER BRACKETS
 ========================================================= */
 
 function drawCorners(
@@ -3002,40 +3097,60 @@ function drawCorners(
 
 
 /* =========================================================
-   FPS COUNTER
+   SHAPE STATUS
+========================================================= */
+
+function setShapeStatus(text) {
+
+    if (!shapeDisplay) return;
+
+    shapeDisplay.textContent =
+        text;
+}
+
+
+/* =========================================================
+   FPS
 ========================================================= */
 
 function updateFPS() {
 
-    renderFrames++;
+    frames++;
 
 
     const now =
-        performance.now();
+        performanceNow();
 
 
     if (
         now -
-        fpsCounterTime >=
+        fpsTimer >=
         1000
     ) {
 
-        currentFPS =
-            renderFrames;
+        fps =
+            frames;
 
 
-        renderFrames =
+        frames =
             0;
 
 
-        fpsCounterTime =
+        fpsTimer =
             now;
 
 
-        if (fpsDisplay) {
+        const fpsElement =
+            findElement(
+                "fps",
+                "fpsText"
+            );
 
-            fpsDisplay.textContent =
-                currentFPS;
+
+        if (fpsElement) {
+
+            fpsElement.textContent =
+                fps;
         }
     }
 }
@@ -3046,15 +3161,31 @@ function updateFPS() {
 ========================================================= */
 
 console.log(
-    "SPECTRA loaded."
+    "================================"
 );
 
 console.log(
-    mobile
-        ? "Mobile performance detected."
-        : "Desktop performance detected."
+    "SPECTRA // READY"
 );
 
 console.log(
-    "Hand tracking has highest priority."
+    isMobile
+        ? "DEVICE // MOBILE"
+        : "DEVICE // DESKTOP"
+);
+
+console.log(
+    "HAND VFX // ENABLED"
+);
+
+console.log(
+    "FACE PIXEL // AVAILABLE"
+);
+
+console.log(
+    "FPS BOOST // AVAILABLE"
+);
+
+console.log(
+    "================================"
 );
