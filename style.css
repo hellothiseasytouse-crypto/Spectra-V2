@@ -2,101 +2,97 @@
     box-sizing: border-box;
 }
 
+html,
 body {
     margin: 0;
+    padding: 0;
 
-    min-height: 100vh;
+    min-height: 100%;
 
-    background:
-        radial-gradient(
-            circle at center,
-            #151515 0%,
-            #070707 65%
-        );
-
-    color: white;
+    background: #070707;
+    color: #f2f2f2;
 
     font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
+        "Courier New",
+        monospace;
+}
 
+
+body {
     display: flex;
     justify-content: center;
 
-    padding: 30px 15px;
+    padding: 25px 15px;
 }
 
 
 .app {
-    width: min(1100px, 100%);
-
-    text-align: center;
+    width: min(1200px, 100%);
 }
 
 
 /* =========================
-   HEADER
+   TOP BAR
 ========================= */
 
 .topbar {
-
     display: flex;
 
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
 
-    margin-bottom: 15px;
-
-    text-align: left;
+    margin-bottom: 14px;
 }
 
 
 h1 {
-
     margin: 0;
 
-    font-size: 36px;
+    font-family: Arial, sans-serif;
 
-    letter-spacing: 8px;
+    font-size: 34px;
+    letter-spacing: 9px;
 }
 
 
-.topbar span {
+.topbar p {
+    margin: 4px 0 0;
 
     color: #777;
 
     font-size: 11px;
-
-    letter-spacing: 3px;
-}
-
-
-.system-status {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 8px;
-
-    font-size: 11px;
-
     letter-spacing: 2px;
 }
 
 
-.status-dot {
+.system-status {
+    display: flex;
 
-    width: 8px;
-    height: 8px;
+    align-items: center;
+    gap: 8px;
+
+    color: #777;
+
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+
+
+#statusDot {
+    width: 7px;
+    height: 7px;
 
     border-radius: 50%;
 
-    background: #555;
+    background: #444;
+}
+
+
+#statusDot.active {
+    background: #fff;
 
     box-shadow:
-        0 0 8px #555;
+        0 0 8px rgba(255, 255, 255, 0.8);
 }
 
 
@@ -104,39 +100,39 @@ h1 {
    CAMERA
 ========================= */
 
-.camera-panel {
-
+.camera-wrapper {
     position: relative;
 
     width: 100%;
 
-    background: #000;
-
-    border: 1px solid #333;
-
     overflow: hidden;
 
-    border-radius: 8px;
+    background: #000;
 
-    box-shadow:
-        0 0 30px rgba(0, 0, 0, 0.8);
+    border:
+        1px solid
+        #292929;
+
+    border-radius: 12px;
+
+    aspect-ratio: 16 / 9;
 }
 
 
 #camera {
+    position: absolute;
 
     width: 100%;
+    height: 100%;
 
-    height: auto;
+    object-fit: cover;
 
-    display: block;
-
-    background: black;
+    left: 0;
+    top: 0;
 }
 
 
 #overlay {
-
     position: absolute;
 
     left: 0;
@@ -149,12 +145,25 @@ h1 {
 }
 
 
-/* =========================
-   CAMERA MESSAGE
-========================= */
+.scanlines {
+    position: absolute;
+
+    inset: 0;
+
+    pointer-events: none;
+
+    background:
+        repeating-linear-gradient(
+            to bottom,
+            rgba(255,255,255,0.025) 0px,
+            rgba(255,255,255,0.025) 1px,
+            transparent 1px,
+            transparent 5px
+        );
+}
+
 
 #cameraMessage {
-
     position: absolute;
 
     inset: 0;
@@ -164,36 +173,10 @@ h1 {
     align-items: center;
     justify-content: center;
 
-    background:
-        rgba(0, 0, 0, 0.45);
+    color: #555;
 
-    color: #aaa;
-}
-
-
-#cameraMessage div {
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 8px;
-}
-
-
-#cameraMessage strong {
-
-    letter-spacing: 4px;
-
-    font-size: 14px;
-}
-
-
-#cameraMessage small {
-
-    color: #666;
-
-    letter-spacing: 2px;
+    font-size: 13px;
+    letter-spacing: 3px;
 }
 
 
@@ -202,138 +185,62 @@ h1 {
 ========================= */
 
 .hud {
-
     position: absolute;
 
     z-index: 5;
 
-    font-family:
-        "Courier New",
-        monospace;
-
-    font-size: 10px;
-
-    letter-spacing: 2px;
-
-    pointer-events: none;
-}
-
-
-.top-left {
-
-    top: 15px;
-    left: 15px;
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 6px;
-
-    text-align: left;
-}
-
-
-.top-left span:last-child {
-
-    color: #aaa;
-}
-
-
-/* =========================
-   COORDINATES
-========================= */
-
-.coordinates {
-
-    top: 15px;
-    right: 15px;
-
-    display: flex;
-
-    gap: 18px;
-
-    text-align: left;
-}
-
-
-.coordinates div {
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 3px;
-}
-
-
-.coordinates span {
-
-    color: #777;
-
-    font-size: 9px;
-}
-
-
-.coordinates strong {
-
-    font-size: 13px;
-
-    font-weight: normal;
-}
-
-
-/* =========================
-   BOTTOM HUD
-========================= */
-
-.bottom-left {
-
-    left: 15px;
-    bottom: 15px;
-
-    display: flex;
-
-    gap: 20px;
-
-    text-align: left;
-}
-
-
-.bottom-left div {
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 4px;
-}
-
-
-.bottom-left span {
-
-    color: #777;
-
-    font-size: 9px;
-}
-
-
-.bottom-left strong {
+    color: rgba(255,255,255,0.8);
 
     font-size: 11px;
 
-    font-weight: normal;
+    line-height: 1.7;
+
+    letter-spacing: 1px;
+
+    pointer-events: none;
+
+    text-shadow:
+        0 1px 3px #000;
 }
 
 
-.bottom-right {
+.hud-top-left {
+    left: 18px;
+    top: 18px;
+}
 
-    right: 15px;
-    bottom: 15px;
 
-    color: #777;
+.hud-top-right {
+    right: 18px;
+    top: 18px;
 
-    letter-spacing: 4px;
+    text-align: right;
+}
+
+
+.hud-bottom-left {
+    left: 18px;
+    bottom: 18px;
+}
+
+
+.hud-bottom-right {
+    right: 18px;
+    bottom: 18px;
+
+    text-align: right;
+}
+
+
+#trackingState {
+    margin-left: 8px;
+
+    color: #fff;
+}
+
+
+#gestureText {
+    color: #aaa;
 }
 
 
@@ -342,68 +249,134 @@ h1 {
 ========================= */
 
 .controls {
-
     display: flex;
-
-    justify-content: center;
 
     gap: 10px;
 
-    margin-top: 18px;
+    margin-top: 15px;
 }
 
 
 button {
+    min-height: 44px;
 
-    padding: 12px 22px;
+    padding: 0 20px;
+
+    border: 1px solid #333;
+    border-radius: 6px;
 
     background: #111;
 
-    color: white;
+    color: #eee;
 
-    border: 1px solid #444;
+    font-family:
+        "Courier New",
+        monospace;
 
-    border-radius: 5px;
+    font-size: 12px;
 
-    font-size: 11px;
-
-    font-weight: bold;
-
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 
     cursor: pointer;
 
-    transition: 0.2s;
+    transition:
+        background 0.15s,
+        border-color 0.15s;
 }
 
 
 button:hover:not(:disabled) {
+    background: #1c1c1c;
 
-    background: #222;
-
-    border-color: #777;
+    border-color: #666;
 }
 
 
 button:disabled {
-
     opacity: 0.35;
 
     cursor: not-allowed;
 }
 
 
-#status {
+button.active {
+    background: #eee;
 
-    margin-top: 12px;
+    color: #050505;
+
+    border-color: #eee;
+}
+
+
+/* =========================
+   INFO PANEL
+========================= */
+
+.info-panel {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 1px;
+
+    margin-top: 15px;
+
+    background: #252525;
+
+    border:
+        1px solid
+        #252525;
+
+    border-radius: 7px;
+
+    overflow: hidden;
+}
+
+
+.info-item {
+    min-height: 65px;
+
+    padding: 13px;
+
+    background: #0d0d0d;
+}
+
+
+.info-item span {
+    display: block;
+
+    margin-bottom: 8px;
 
     color: #666;
 
-    font-family:
-        "Courier New",
-        monospace;
+    font-size: 9px;
+
+    letter-spacing: 2px;
+}
+
+
+.info-item strong {
+    font-size: 14px;
+
+    font-weight: normal;
+
+    letter-spacing: 1px;
+}
+
+
+/* =========================
+   STATUS
+========================= */
+
+#status {
+    margin: 12px 0 0;
+
+    color: #555;
 
     font-size: 11px;
+
+    letter-spacing: 1px;
 }
 
 
@@ -411,56 +384,72 @@ button:disabled {
    MOBILE
 ========================= */
 
-@media (max-width: 600px) {
+@media (max-width: 650px) {
 
     body {
-
         padding: 15px 8px;
     }
 
 
     h1 {
-
         font-size: 25px;
 
-        letter-spacing: 5px;
+        letter-spacing: 6px;
     }
 
 
-    .topbar span {
-
-        font-size: 8px;
-
-        letter-spacing: 2px;
+    .topbar {
+        align-items: center;
     }
 
 
-    .coordinates {
-
-        gap: 8px;
-    }
-
-
-    .coordinates strong {
-
-        font-size: 10px;
+    .system-status {
+        font-size: 9px;
     }
 
 
     .hud {
-
         font-size: 8px;
     }
 
 
-    .controls {
+    .hud-top-left,
+    .hud-bottom-left {
+        left: 10px;
+    }
 
+
+    .hud-top-right,
+    .hud-bottom-right {
+        right: 10px;
+    }
+
+
+    .hud-top-left,
+    .hud-top-right {
+        top: 10px;
+    }
+
+
+    .hud-bottom-left,
+    .hud-bottom-right {
+        bottom: 10px;
+    }
+
+
+    .controls {
         flex-direction: column;
     }
 
 
     button {
-
         width: 100%;
     }
+
+
+    .info-panel {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
 }
