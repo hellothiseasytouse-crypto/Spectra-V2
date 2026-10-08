@@ -8,7 +8,7 @@ import {
 
 /* =========================================================
    SPECTRA
-   HAND VFX / FACE / GESTURES / FPS BUILD
+   HAND TRACKING / LANDMARK GEOMETRY / FACE / FPS
 ========================================================= */
 
 
@@ -69,21 +69,25 @@ const shapeBtn =
 
 
 /* =========================================================
-   CREATE / FIND GESTURE DISPLAY
+   CREATE / FIND STATUS ELEMENTS
 ========================================================= */
 
 function createStatusElement(id, text) {
 
-    let el = document.getElementById(id);
+    let el =
+        document.getElementById(id);
 
     if (el) return el;
+
 
     const controls =
         document.querySelector(".controls");
 
     if (!controls) return null;
 
-    el = document.createElement("button");
+
+    el =
+        document.createElement("button");
 
     el.id = id;
     el.textContent = text;
@@ -111,7 +115,7 @@ const fpsBoostBtn =
 const shapeDisplay =
     createStatusElement(
         "shapeDisplay",
-        "VFX // READY"
+        "GEOMETRY // READY"
     );
 
 
@@ -132,7 +136,7 @@ const FACE_MODEL =
 
 
 const OBJECT_MODEL =
-    "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite";
+    "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/object_detector.tflite";
 
 
 let vision = null;
@@ -183,12 +187,6 @@ const isMobile =
 
 let fpsBoost = false;
 
-
-/*
-    Hand tracking ALWAYS gets priority.
-
-    The other systems are deliberately slower.
-*/
 
 const PERFORMANCE_NORMAL = isMobile
     ? {
@@ -260,16 +258,41 @@ function performanceNow() {
 
 
 /* =========================================================
-   HAND VFX STATE
+   LANDMARK GEOMETRY STATE
 ========================================================= */
 
-let vfxMode = "NONE";
+/*
+    The old:
 
-let vfxEnergy = 0;
+        RIBBON
+        PORTAL
+        CORE
+        TRIANGLE
+        ORB
 
-let vfxRotation = 0;
+    system is completely removed.
 
-let vfxPulse = 0;
+    Geometry is now controlled directly by
+    MediaPipe hand landmarks.
+*/
+
+
+let geometryMode = 0;
+
+
+const GEOMETRY_MODES = [
+    "QUAD WARP",
+    "DIAMOND",
+    "SHARD",
+    "FRAME"
+];
+
+
+const geometrySmooth =
+    new Map();
+
+
+const GEOMETRY_SMOOTHING = 0.22;
 
 
 /* =========================================================
@@ -279,6 +302,7 @@ let vfxPulse = 0;
 async function startCamera() {
 
     if (cameraRunning) return;
+
 
     try {
 
@@ -312,17 +336,23 @@ async function startCamera() {
         video.srcObject =
             stream;
 
+
         video.muted = true;
+
         video.playsInline = true;
+
 
         await video.play();
 
 
         canvas.width =
-            video.videoWidth || 640;
+            video.videoWidth ||
+            640;
+
 
         canvas.height =
-            video.videoHeight || 360;
+            video.videoHeight ||
+            360;
 
 
         cameraRunning = true;
@@ -335,19 +365,13 @@ async function startCamera() {
         }
 
 
-        requestAnimationFrame(render);
+        requestAnimationFrame(
+            render
+        );
 
-
-        /*
-            IMPORTANT:
-
-            Only the HAND model loads
-            at startup.
-
-            Face/object models are lazy-loaded.
-        */
 
         await loadVision();
+
 
     } catch (error) {
 
@@ -374,14 +398,18 @@ async function loadVision() {
 
     if (vision) return;
 
+
     try {
 
         vision =
             await FilesetResolver
-                .forVisionTasks(WASM);
+                .forVisionTasks(
+                    WASM
+                );
 
 
         await loadGestureRecognizer();
+
 
     } catch (error) {
 
@@ -400,6 +428,7 @@ async function loadVision() {
 async function loadGestureRecognizer() {
 
     if (gestureRecognizer) return;
+
 
     try {
 
@@ -437,6 +466,7 @@ async function loadGestureRecognizer() {
             "SPECTRA // HAND AI READY"
         );
 
+
     } catch (error) {
 
         console.error(
@@ -455,9 +485,12 @@ async function loadFaceDetector() {
 
     if (faceDetector) return;
 
+
     if (!vision) {
+
         await loadVision();
     }
+
 
     try {
 
@@ -486,6 +519,7 @@ async function loadFaceDetector() {
             "SPECTRA // FACE AI READY"
         );
 
+
     } catch (error) {
 
         console.error(
@@ -504,9 +538,12 @@ async function loadObjectDetector() {
 
     if (objectDetector) return;
 
+
     if (!vision) {
+
         await loadVision();
     }
+
 
     try {
 
@@ -540,6 +577,7 @@ async function loadObjectDetector() {
             "SPECTRA // OBJECT AI READY"
         );
 
+
     } catch (error) {
 
         console.error(
@@ -551,115 +589,116 @@ async function loadObjectDetector() {
 
 
 /* =========================================================
-   FPS BOOST BUTTON
+   FPS BOOST
 ========================================================= */
 
 if (fpsBoostBtn) {
 
-    fpsBoostBtn.onclick = () => {
+    fpsBoostBtn.onclick =
+        () => {
 
-        fpsBoost =
-            !fpsBoost;
-
-
-        performance =
-            fpsBoost
-                ? PERFORMANCE_BOOST
-                : PERFORMANCE_NORMAL;
+            fpsBoost =
+                !fpsBoost;
 
 
-        if (fpsBoost) {
-
-            fpsBoostBtn.textContent =
-                "FPS BOOST ON";
-
-
-            /*
-                Expensive systems OFF.
-            */
-
-            objectDetection =
-                false;
-
-            privacyMode =
-                "OFF";
-
-            faceFilter =
-                "OFF";
+            performance =
+                fpsBoost
+                    ? PERFORMANCE_BOOST
+                    : PERFORMANCE_NORMAL;
 
 
-            /*
-                Hand tracking stays ON.
-            */
+            if (fpsBoost) {
 
-            handTracking =
-                true;
+                fpsBoostBtn.textContent =
+                    "FPS BOOST ON";
 
 
-            /*
-                Keep shapes.
-            */
-
-            shapesEnabled =
-                true;
+                objectDetection =
+                    false;
 
 
-            targetVisible =
-                false;
+                privacyMode =
+                    "OFF";
 
 
-            if (objectBtn) {
-                objectBtn.textContent =
-                    "OBJECT DETECTION OFF";
+                faceFilter =
+                    "OFF";
+
+
+                handTracking =
+                    true;
+
+
+                shapesEnabled =
+                    true;
+
+
+                targetVisible =
+                    false;
+
+
+                if (objectBtn) {
+
+                    objectBtn.textContent =
+                        "OBJECT DETECTION OFF";
+                }
+
+
+                if (privacyBtn) {
+
+                    privacyBtn.textContent =
+                        "PRIVACY OFF";
+                }
+
+
+                if (filterBtn) {
+
+                    filterBtn.textContent =
+                        "FILTER OFF";
+                }
+
+
+                if (targetBtn) {
+
+                    targetBtn.textContent =
+                        "TARGET BOX OFF";
+                }
+
+
+            } else {
+
+                fpsBoostBtn.textContent =
+                    "FPS BOOST OFF";
+
+
+                targetVisible =
+                    true;
+
+
+                if (targetBtn) {
+
+                    targetBtn.textContent =
+                        "TARGET BOX ON";
+                }
             }
-
-
-            if (privacyBtn) {
-                privacyBtn.textContent =
-                    "PRIVACY OFF";
-            }
-
-
-            if (filterBtn) {
-                filterBtn.textContent =
-                    "FILTER OFF";
-            }
-
-
-            if (targetBtn) {
-                targetBtn.textContent =
-                    "TARGET BOX OFF";
-            }
-
-
-        } else {
-
-            fpsBoostBtn.textContent =
-                "FPS BOOST OFF";
-
-
-            targetVisible =
-                true;
-
-
-            if (targetBtn) {
-                targetBtn.textContent =
-                    "TARGET BOX ON";
-            }
-        }
-    };
+        };
 }
 
 
 /* =========================================================
-   NORMAL BUTTONS
+   START BUTTON
 ========================================================= */
 
 if (startBtn) {
+
     startBtn.onclick =
         startCamera;
 }
 
+
+/* =========================================================
+   HAND TRACKING BUTTON
+========================================================= */
 
 if (trackingBtn) {
 
@@ -677,6 +716,10 @@ if (trackingBtn) {
         };
 }
 
+
+/* =========================================================
+   TARGET BOX
+========================================================= */
 
 if (targetBtn) {
 
@@ -721,7 +764,9 @@ if (privacyBtn) {
 
             privacyMode =
                 modes[
-                    (index + 1) %
+                    (
+                        index + 1
+                    ) %
                     modes.length
                 ];
 
@@ -769,7 +814,9 @@ if (filterBtn) {
 
             faceFilter =
                 filters[
-                    (index + 1) %
+                    (
+                        index + 1
+                    ) %
                     filters.length
                 ];
 
@@ -824,9 +871,11 @@ if (objectBtn) {
                     objectDetection =
                         false;
 
+
                     objectBtn.textContent =
                         "OBJECT DETECTION OFF";
                 }
+
 
             } else {
 
@@ -859,7 +908,7 @@ if (signBtn) {
 
 
 /* =========================================================
-   SHAPES
+   SHAPE / GEOMETRY BUTTON
 ========================================================= */
 
 if (shapeBtn) {
@@ -867,14 +916,38 @@ if (shapeBtn) {
     shapeBtn.onclick =
         () => {
 
-            shapesEnabled =
-                !shapesEnabled;
+            /*
+                First click after disabled:
+                turn geometry back on.
+            */
+
+            if (!shapesEnabled) {
+
+                shapesEnabled =
+                    true;
+
+
+                shapeBtn.textContent =
+                    `SHAPE // ${GEOMETRY_MODES[geometryMode]}`;
+
+
+                return;
+            }
+
+
+            /*
+                Cycle geometry type.
+            */
+
+            geometryMode =
+                (
+                    geometryMode + 1
+                ) %
+                GEOMETRY_MODES.length;
 
 
             shapeBtn.textContent =
-                shapesEnabled
-                    ? "SHAPES ON"
-                    : "SHAPES OFF";
+                `SHAPE // ${GEOMETRY_MODES[geometryMode]}`;
         };
 }
 
@@ -896,12 +969,14 @@ function render(timestamp) {
 
 
     /*
-        HAND AI = TOP PRIORITY
+        HAND AI
     */
 
     if (handTracking) {
 
-        runHands(timestamp);
+        runHands(
+            timestamp
+        );
     }
 
 
@@ -917,7 +992,9 @@ function render(timestamp) {
         )
     ) {
 
-        runFace(timestamp);
+        runFace(
+            timestamp
+        );
     }
 
 
@@ -930,7 +1007,9 @@ function render(timestamp) {
         objectDetection
     ) {
 
-        runObjects(timestamp);
+        runObjects(
+            timestamp
+        );
     }
 
 
@@ -949,8 +1028,7 @@ function render(timestamp) {
 
 
     /*
-        MAIN NEW FEATURE:
-        HAND VFX
+        LANDMARK GEOMETRY
     */
 
     if (
@@ -958,7 +1036,9 @@ function render(timestamp) {
         handTracking
     ) {
 
-        drawHandVFX(timestamp);
+        drawHandVFX(
+            timestamp
+        );
     }
 
 
@@ -992,13 +1072,14 @@ function drawCamera() {
 
 
     /*
-        Mirror the front camera.
+        Mirror front camera.
     */
 
     ctx.translate(
         canvas.width,
         0
     );
+
 
     ctx.scale(
         -1,
@@ -1023,7 +1104,9 @@ function drawCamera() {
    HAND DETECTION
 ========================================================= */
 
-function runHands(timestamp) {
+function runHands(
+    timestamp
+) {
 
     if (!gestureRecognizer) return;
 
@@ -1033,6 +1116,7 @@ function runHands(timestamp) {
         lastHandTime <
         performance.hands
     ) {
+
         return;
     }
 
@@ -1068,7 +1152,9 @@ function runHands(timestamp) {
    FACE DETECTION
 ========================================================= */
 
-function runFace(timestamp) {
+function runFace(
+    timestamp
+) {
 
     if (!faceDetector) return;
 
@@ -1078,6 +1164,7 @@ function runFace(timestamp) {
         lastFaceTime <
         performance.face
     ) {
+
         return;
     }
 
@@ -1095,6 +1182,7 @@ function runFace(timestamp) {
                     timestamp
                 );
 
+
     } catch (error) {
 
         console.error(
@@ -1109,7 +1197,9 @@ function runFace(timestamp) {
    OBJECT DETECTION
 ========================================================= */
 
-function runObjects(timestamp) {
+function runObjects(
+    timestamp
+) {
 
     if (!objectDetector) return;
 
@@ -1119,6 +1209,7 @@ function runObjects(timestamp) {
         lastObjectTime <
         performance.objects
     ) {
+
         return;
     }
 
@@ -1135,6 +1226,7 @@ function runObjects(timestamp) {
                     video,
                     timestamp
                 );
+
 
     } catch (error) {
 
@@ -1179,10 +1271,6 @@ function updateGesture() {
     }
 
 
-    /*
-        MediaPipe's built-in gesture.
-    */
-
     const first =
         hands[0]?.[0];
 
@@ -1191,10 +1279,6 @@ function updateGesture() {
         first?.categoryName ||
         "TRACKING";
 
-
-    /*
-        Improve naming.
-    */
 
     const names = {
 
@@ -1233,12 +1317,15 @@ function updateGesture() {
 
 
 /* =========================================================
-   SET GESTURE UI
+   SET GESTURE
 ========================================================= */
 
-function setGesture(value) {
+function setGesture(
+    value
+) {
 
     if (!gestureDisplay) return;
+
 
     gestureDisplay.textContent =
         `GESTURE // ${value}`;
@@ -1246,10 +1333,12 @@ function setGesture(value) {
 
 
 /* =========================================================
-   THE NEW SHAPE SYSTEM
+   NEW LANDMARK GEOMETRY
 ========================================================= */
 
-function drawHandVFX(timestamp) {
+function drawHandVFX(
+    timestamp
+) {
 
     const hands =
         handResults?.landmarks ||
@@ -1259,8 +1348,12 @@ function drawHandVFX(timestamp) {
     if (!hands.length) {
 
         setShapeStatus(
-            "VFX // WAITING FOR HANDS"
+            "GEOMETRY // WAITING"
         );
+
+
+        geometrySmooth.clear();
+
 
         return;
     }
@@ -1268,60 +1361,19 @@ function drawHandVFX(timestamp) {
 
     /*
         ONE HAND
-        = small floating energy shape
     */
 
     if (hands.length === 1) {
 
-        const hand =
-            hands[0];
+        drawLandmarkGeometry(
+            hands[0],
+            timestamp
+        );
 
 
-        const index =
-            point(hand[8]);
-
-
-        const thumb =
-            point(hand[4]);
-
-
-        const palm =
-            point(hand[9]);
-
-
-        const pinch =
-            distance(
-                index,
-                thumb
-            ) <
-            45;
-
-
-        if (pinch) {
-
-            drawSingleHandPortal(
-                palm,
-                index,
-                timestamp
-            );
-
-
-            setShapeStatus(
-                "VFX // PINCH PORTAL"
-            );
-
-        } else {
-
-            drawSingleHandOrb(
-                index,
-                timestamp
-            );
-
-
-            setShapeStatus(
-                "VFX // HAND FIELD"
-            );
-        }
+        setShapeStatus(
+            `GEOMETRY // ${GEOMETRY_MODES[geometryMode]}`
+        );
 
 
         return;
@@ -1330,599 +1382,546 @@ function drawHandVFX(timestamp) {
 
     /*
         TWO HANDS
-        = MAIN REFERENCE-STYLE EFFECT
     */
 
-    const left =
-        getPalmCenter(
-            hands[0]
-        );
-
-
-    const right =
-        getPalmCenter(
-            hands[1]
-        );
-
-
-    const center = {
-
-        x:
-            (left.x +
-            right.x) / 2,
-
-        y:
-            (left.y +
-            right.y) / 2
-    };
-
-
-    const dx =
-        right.x -
-        left.x;
-
-
-    const dy =
-        right.y -
-        left.y;
-
-
-    const distanceBetween =
-        Math.hypot(
-            dx,
-            dy
-        );
-
-
-    const angle =
-        Math.atan2(
-            dy,
-            dx
-        );
-
-
-    vfxRotation =
-        angle;
-
-
-    /*
-        Smooth energy based on
-        distance between hands.
-    */
-
-    const targetEnergy =
-        Math.min(
-            1,
-            distanceBetween /
-            450
-        );
-
-
-    vfxEnergy +=
-        (
-            targetEnergy -
-            vfxEnergy
-        ) * 0.12;
-
-
-    vfxPulse =
-        Math.sin(
-            timestamp * 0.006
-        );
-
-
-    /*
-        Detect gestures.
-    */
-
-    const gesture1 =
-        getGesture(0);
-
-
-    const gesture2 =
-        getGesture(1);
-
-
-    /*
-        DIFFERENT HAND COMBINATIONS
-    */
-
-    if (
-        gesture1 === "Victory" ||
-        gesture2 === "Victory"
-    ) {
-
-        vfxMode =
-            "TRIANGLE";
-
-    } else if (
-        gesture1 === "Closed_Fist" &&
-        gesture2 === "Closed_Fist"
-    ) {
-
-        vfxMode =
-            "CORE";
-
-    } else if (
-        isPinching(hands[0]) &&
-        isPinching(hands[1])
-    ) {
-
-        vfxMode =
-            "PORTAL";
-
-    } else if (
-        gesture1 === "Open_Palm" ||
-        gesture2 === "Open_Palm"
-    ) {
-
-        vfxMode =
-            "RIBBON";
-
-    } else {
-
-        vfxMode =
-            "DIAMOND";
-    }
-
-
-    /*
-        DRAW THE ACTUAL VIRTUAL OBJECT
-    */
-
-    ctx.save();
-
-    ctx.translate(
-        center.x,
-        center.y
-    );
-
-
-    ctx.rotate(
-        angle
-    );
-
-
-    const width =
-        Math.max(
-            80,
-            distanceBetween
-        );
-
-
-    const height =
-        Math.max(
-            45,
-            distanceBetween *
-            0.32
-        );
-
-
-    /*
-        Outer geometry
-    */
-
-    drawVFXFrame(
-        width,
-        height,
-        vfxMode,
-        timestamp
-    );
-
-
-    /*
-        Inner geometry
-    */
-
-    drawVFXCore(
-        width,
-        height,
-        vfxMode,
-        timestamp
-    );
-
-
-    /*
-        connecting lines to hands
-    */
-
-    ctx.restore();
-
-
-    drawHandConnections(
-        left,
-        right,
-        center,
+    drawTwoHandGeometry(
+        hands[0],
+        hands[1],
         timestamp
     );
 
 
     setShapeStatus(
-        `VFX // ${vfxMode}`
+        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]}`
     );
 }
 
 
 /* =========================================================
-   VFX OUTER FRAME
+   ONE HAND GEOMETRY
 ========================================================= */
 
-function drawVFXFrame(
-    width,
-    height,
-    mode,
+function drawLandmarkGeometry(
+    hand,
     timestamp
 ) {
 
+    const wrist =
+        smoothPoint(
+            "wrist",
+            point(hand[0])
+        );
+
+
+    const thumb =
+        smoothPoint(
+            "thumb",
+            point(hand[4])
+        );
+
+
+    const index =
+        smoothPoint(
+            "index",
+            point(hand[8])
+        );
+
+
+    const middle =
+        smoothPoint(
+            "middle",
+            point(hand[12])
+        );
+
+
+    const ring =
+        smoothPoint(
+            "ring",
+            point(hand[16])
+        );
+
+
+    const pinky =
+        smoothPoint(
+            "pinky",
+            point(hand[20])
+        );
+
+
+    /*
+        Normalized pinch distance.
+
+        This is deliberately based on MediaPipe's
+        normalized coordinates instead of pixels.
+    */
+
+    const pinchDistance =
+        Math.hypot(
+            hand[8].x -
+            hand[4].x,
+
+            hand[8].y -
+            hand[4].y
+        );
+
+
+    const pinchAmount =
+        Math.min(
+            1,
+            pinchDistance /
+            0.22
+        );
+
+
     ctx.save();
+
+
+    if (
+        geometryMode === 0
+    ) {
+
+        drawQuadWarp(
+            wrist,
+            thumb,
+            index,
+            pinky,
+            pinchAmount,
+            timestamp
+        );
+
+
+    } else if (
+        geometryMode === 1
+    ) {
+
+        drawLandmarkDiamond(
+            thumb,
+            index,
+            middle,
+            ring,
+            pinchAmount,
+            timestamp
+        );
+
+
+    } else if (
+        geometryMode === 2
+    ) {
+
+        drawLandmarkShard(
+            thumb,
+            index,
+            middle,
+            ring,
+            pinky,
+            wrist,
+            pinchAmount,
+            timestamp
+        );
+
+
+    } else {
+
+        drawLandmarkFrame(
+            wrist,
+            thumb,
+            index,
+            middle,
+            ring,
+            pinky,
+            pinchAmount,
+            timestamp
+        );
+    }
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   QUAD WARP
+========================================================= */
+
+function drawQuadWarp(
+    wrist,
+    thumb,
+    index,
+    pinky,
+    pinchAmount,
+    timestamp
+) {
+
+    /*
+        Four actual MediaPipe-controlled corners.
+    */
+
+    const p1 =
+        thumb;
+
+
+    const p2 =
+        index;
+
+
+    const p3 =
+        pinky;
+
+
+    const p4 =
+        wrist;
 
 
     const pulse =
         1 +
         Math.sin(
-            timestamp * 0.005
-        ) * 0.04;
+            timestamp * 0.004
+        ) *
+        0.025;
 
 
-    ctx.scale(
-        pulse,
-        pulse
-    );
+    const center =
+        averagePoint(
+            p1,
+            p2,
+            p3,
+            p4
+        );
 
+
+    /*
+        Pinching compresses the geometry.
+    */
+
+    const compression =
+        0.82 +
+        pinchAmount *
+        0.18;
+
+
+    const a =
+        scaleAround(
+            p1,
+            center,
+            compression *
+            pulse
+        );
+
+
+    const b =
+        scaleAround(
+            p2,
+            center,
+            compression *
+            pulse
+        );
+
+
+    const c =
+        scaleAround(
+            p3,
+            center,
+            compression *
+            pulse
+        );
+
+
+    const d =
+        scaleAround(
+            p4,
+            center,
+            compression *
+            pulse
+        );
+
+
+    /*
+        OUTER QUAD
+    */
 
     ctx.strokeStyle =
-        "rgba(255,255,255,0.85)";
+        "rgba(255,255,255,0.9)";
 
 
     ctx.lineWidth =
         fpsBoost
             ? 2
-            : 3;
+            : 2.5;
 
 
-    ctx.setLineDash([
-        10,
-        8
-    ]);
+    ctx.beginPath();
 
+
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+
+    ctx.lineTo(
+        b.x,
+        b.y
+    );
+
+
+    ctx.lineTo(
+        c.x,
+        c.y
+    );
+
+
+    ctx.lineTo(
+        d.x,
+        d.y
+    );
+
+
+    ctx.closePath();
+
+
+    ctx.stroke();
+
+
+    /*
+        INNER QUAD
+    */
+
+    const inner = [
+
+        lerpPoint(
+            a,
+            center,
+            0.22
+        ),
+
+        lerpPoint(
+            b,
+            center,
+            0.22
+        ),
+
+        lerpPoint(
+            c,
+            center,
+            0.22
+        ),
+
+        lerpPoint(
+            d,
+            center,
+            0.22
+        )
+    ];
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.45)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        inner[0].x,
+        inner[0].y
+    );
+
+
+    ctx.lineTo(
+        inner[1].x,
+        inner[1].y
+    );
+
+
+    ctx.lineTo(
+        inner[2].x,
+        inner[2].y
+    );
+
+
+    ctx.lineTo(
+        inner[3].x,
+        inner[3].y
+    );
+
+
+    ctx.closePath();
+
+
+    ctx.stroke();
+
+
+    /*
+        Deforming grid.
+    */
+
+    drawQuadGrid(
+        a,
+        b,
+        c,
+        d
+    );
+
+
+    drawGeometryPoint(a);
+
+    drawGeometryPoint(b);
+
+    drawGeometryPoint(c);
+
+    drawGeometryPoint(d);
+
+
+    /*
+        Pinch center.
+    */
 
     if (
-        mode ===
-        "TRIANGLE"
+        pinchAmount <
+        0.35
     ) {
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.95)";
+
+
+        ctx.lineWidth = 2;
+
 
         ctx.beginPath();
 
-        ctx.moveTo(
-            0,
-            -height
-        );
 
-        ctx.lineTo(
-            width,
-            height
-        );
-
-        ctx.lineTo(
-            -width,
-            height
-        );
-
-        ctx.closePath();
-
-        ctx.stroke();
-
-
-    } else if (
-        mode ===
-        "CORE"
-    ) {
-
-        ctx.beginPath();
-
-        ctx.rect(
-            -width * 0.35,
-            -height,
-            width * 0.7,
-            height * 2
-        );
-
-        ctx.stroke();
-
-
-    } else if (
-        mode ===
-        "PORTAL"
-    ) {
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            0,
-            0,
-            width * 0.5,
-            height,
-            0,
+        ctx.arc(
+            center.x,
+            center.y,
+            8,
             0,
             Math.PI * 2
         );
 
-        ctx.stroke();
-
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            0,
-            0,
-            width * 0.34,
-            height * 0.65,
-            0,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.stroke();
-
-
-    } else if (
-        mode ===
-        "RIBBON"
-    ) {
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-            -width,
-            0
-        );
-
-
-        ctx.quadraticCurveTo(
-            -width * 0.3,
-            -height * 2,
-            0,
-            0
-        );
-
-
-        ctx.quadraticCurveTo(
-            width * 0.3,
-            height * 2,
-            width,
-            0
-        );
-
-
-        ctx.stroke();
-
-
-    } else {
-
-        /*
-            DIAMOND
-        */
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-            -width,
-            0
-        );
-
-        ctx.lineTo(
-            0,
-            -height
-        );
-
-        ctx.lineTo(
-            width,
-            0
-        );
-
-        ctx.lineTo(
-            0,
-            height
-        );
-
-        ctx.closePath();
 
         ctx.stroke();
     }
-
-
-    ctx.setLineDash([]);
-
-
-    ctx.restore();
 }
 
 
 /* =========================================================
-   VFX CORE
+   QUAD GRID
 ========================================================= */
 
-function drawVFXCore(
-    width,
-    height,
-    mode,
-    timestamp
+function drawQuadGrid(
+    a,
+    b,
+    c,
+    d
 ) {
 
     ctx.save();
 
 
-    const pulse =
-        1 +
-        Math.sin(
-            timestamp * 0.009
-        ) * 0.12;
-
-
-    ctx.scale(
-        pulse,
-        pulse
-    );
-
-
     ctx.strokeStyle =
-        "rgba(255,255,255,0.95)";
+        "rgba(255,255,255,0.18)";
 
 
-    ctx.lineWidth =
-        2;
+    ctx.lineWidth = 1;
 
 
     /*
-        Central energy lines.
+        Horizontal lines.
     */
 
     for (
-        let i = -2;
-        i <= 2;
+        let i = 1;
+        i < 4;
         i++
     ) {
 
-        const offset =
-            i *
-            height *
-            0.22;
+        const t =
+            i / 4;
+
+
+        const left =
+            lerpPoint(
+                a,
+                d,
+                t
+            );
+
+
+        const right =
+            lerpPoint(
+                b,
+                c,
+                t
+            );
 
 
         ctx.beginPath();
 
+
         ctx.moveTo(
-            -width * 0.5,
-            offset
+            left.x,
+            left.y
         );
 
+
         ctx.lineTo(
-            width * 0.5,
-            -offset
+            right.x,
+            right.y
         );
+
 
         ctx.stroke();
     }
 
 
     /*
-        Center core.
-    */
-
-    const radius =
-        Math.max(
-            8,
-            height *
-            0.16
-        );
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-        0,
-        0,
-        radius,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.stroke();
-
-
-    /*
-        Rotating mini square.
-    */
-
-    ctx.rotate(
-        timestamp * 0.001
-    );
-
-
-    ctx.strokeRect(
-        -radius * 0.65,
-        -radius * 0.65,
-        radius * 1.3,
-        radius * 1.3
-    );
-
-
-    ctx.restore();
-}
-
-
-/* =========================================================
-   HAND CONNECTIONS
-========================================================= */
-
-function drawHandConnections(
-    left,
-    right,
-    center,
-    timestamp
-) {
-
-    ctx.save();
-
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.35)";
-
-
-    ctx.lineWidth =
-        1.5;
-
-
-    ctx.setLineDash([
-        6,
-        10
-    ]);
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        left.x,
-        left.y
-    );
-
-    ctx.lineTo(
-        center.x,
-        center.y
-    );
-
-    ctx.lineTo(
-        right.x,
-        right.y
-    );
-
-    ctx.stroke();
-
-
-    ctx.setLineDash([]);
-
-
-    /*
-        Small tracking points.
+        Vertical lines.
     */
 
     for (
-        const p
-        of [left, right]
+        let i = 1;
+        i < 4;
+        i++
     ) {
+
+        const t =
+            i / 4;
+
+
+        const top =
+            lerpPoint(
+                a,
+                b,
+                t
+            );
+
+
+        const bottom =
+            lerpPoint(
+                d,
+                c,
+                t
+            );
+
 
         ctx.beginPath();
 
-        ctx.arc(
-            p.x,
-            p.y,
-            5 +
-            Math.sin(
-                timestamp * 0.006
-            ) * 2,
-            0,
-            Math.PI * 2
+
+        ctx.moveTo(
+            top.x,
+            top.y
         );
+
+
+        ctx.lineTo(
+            bottom.x,
+            bottom.y
+        );
+
 
         ctx.stroke();
     }
@@ -1933,117 +1932,949 @@ function drawHandConnections(
 
 
 /* =========================================================
-   SINGLE HAND ORB
+   DIAMOND
 ========================================================= */
 
-function drawSingleHandOrb(
-    position,
+function drawLandmarkDiamond(
+    thumb,
+    index,
+    middle,
+    ring,
+    pinchAmount,
     timestamp
 ) {
 
-    const radius =
-        22 +
-        Math.sin(
-            timestamp * 0.006
-        ) * 5;
+    const top =
+        index;
 
 
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.8)";
-
-    ctx.lineWidth = 2;
+    const right =
+        middle;
 
 
-    ctx.beginPath();
-
-    ctx.arc(
-        position.x,
-        position.y,
-        radius,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.stroke();
+    const bottom =
+        ring;
 
 
-    ctx.beginPath();
-
-    ctx.arc(
-        position.x,
-        position.y,
-        radius * 0.45,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.stroke();
+    const left =
+        thumb;
 
 
-    ctx.restore();
-}
+    const center =
+        averagePoint(
+            top,
+            right,
+            bottom,
+            left
+        );
 
 
-/* =========================================================
-   SINGLE HAND PORTAL
-========================================================= */
-
-function drawSingleHandPortal(
-    palm,
-    finger,
-    timestamp
-) {
-
-    const radius =
-        35 +
-        Math.sin(
-            timestamp * 0.01
-        ) * 6;
+    const compression =
+        0.78 +
+        pinchAmount *
+        0.22;
 
 
-    ctx.save();
+    const points = [
+
+        scaleAround(
+            top,
+            center,
+            compression
+        ),
+
+        scaleAround(
+            right,
+            center,
+            compression
+        ),
+
+        scaleAround(
+            bottom,
+            center,
+            compression
+        ),
+
+        scaleAround(
+            left,
+            center,
+            compression
+        )
+    ];
 
 
     ctx.strokeStyle =
         "rgba(255,255,255,0.9)";
 
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
 
 
     ctx.beginPath();
 
-    ctx.ellipse(
-        finger.x,
-        finger.y,
-        radius,
-        radius * 0.55,
-        timestamp * 0.002,
-        0,
-        Math.PI * 2
+
+    ctx.moveTo(
+        points[0].x,
+        points[0].y
     );
+
+
+    for (
+        let i = 1;
+        i < points.length;
+        i++
+    ) {
+
+        ctx.lineTo(
+            points[i].x,
+            points[i].y
+        );
+    }
+
+
+    ctx.closePath();
+
 
     ctx.stroke();
 
 
+    /*
+        Internal deformation lines.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.28)";
+
+
+    ctx.lineWidth = 1;
+
+
     ctx.beginPath();
 
+
     ctx.moveTo(
-        palm.x,
-        palm.y
+        points[0].x,
+        points[0].y
     );
 
+
     ctx.lineTo(
-        finger.x,
-        finger.y
+        points[2].x,
+        points[2].y
     );
+
+
+    ctx.moveTo(
+        points[1].x,
+        points[1].y
+    );
+
+
+    ctx.lineTo(
+        points[3].x,
+        points[3].y
+    );
+
+
+    ctx.stroke();
+
+
+    /*
+        Center.
+    */
+
+    ctx.beginPath();
+
+
+    ctx.arc(
+        center.x,
+        center.y,
+        5,
+        0,
+        Math.PI * 2
+    );
+
+
+    ctx.stroke();
+
+
+    for (
+        const p
+        of points
+    ) {
+
+        drawGeometryPoint(
+            p
+        );
+    }
+}
+
+
+/* =========================================================
+   SHARD
+========================================================= */
+
+function drawLandmarkShard(
+    thumb,
+    index,
+    middle,
+    ring,
+    pinky,
+    wrist,
+    pinchAmount,
+    timestamp
+) {
+
+    /*
+        Six actual hand landmarks.
+    */
+
+    const points = [
+
+        thumb,
+        index,
+        middle,
+        ring,
+        pinky,
+        wrist
+    ];
+
+
+    const center =
+        averagePoint(
+            ...points
+        );
+
+
+    const compression =
+        0.82 +
+        pinchAmount *
+        0.18;
+
+
+    const warped =
+        points.map(
+            p =>
+                scaleAround(
+                    p,
+                    center,
+                    compression
+                )
+        );
+
+
+    /*
+        Main irregular geometry.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.9)";
+
+
+    ctx.lineWidth = 2.5;
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        warped[0].x,
+        warped[0].y
+    );
+
+
+    for (
+        let i = 1;
+        i < warped.length;
+        i++
+    ) {
+
+        ctx.lineTo(
+            warped[i].x,
+            warped[i].y
+        );
+    }
+
+
+    ctx.closePath();
+
+
+    ctx.stroke();
+
+
+    /*
+        Internal triangulation.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.3)";
+
+
+    ctx.lineWidth = 1;
+
+
+    for (
+        let i = 0;
+        i < warped.length;
+        i++
+    ) {
+
+        const next =
+            warped[
+                (
+                    i + 2
+                ) %
+                warped.length
+            ];
+
+
+        ctx.beginPath();
+
+
+        ctx.moveTo(
+            warped[i].x,
+            warped[i].y
+        );
+
+
+        ctx.lineTo(
+            next.x,
+            next.y
+        );
+
+
+        ctx.stroke();
+    }
+
+
+    /*
+        Center.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.8)";
+
+
+    ctx.beginPath();
+
+
+    ctx.arc(
+        center.x,
+        center.y,
+        5,
+        0,
+        Math.PI * 2
+    );
+
+
+    ctx.stroke();
+
+
+    for (
+        const p
+        of warped
+    ) {
+
+        drawGeometryPoint(
+            p
+        );
+    }
+}
+
+
+/* =========================================================
+   FRAME
+========================================================= */
+
+function drawLandmarkFrame(
+    wrist,
+    thumb,
+    index,
+    middle,
+    ring,
+    pinky,
+    pinchAmount,
+    timestamp
+) {
+
+    /*
+        Irregular four-point surface.
+    */
+
+    const topLeft =
+        thumb;
+
+
+    const topRight =
+        index;
+
+
+    const bottomRight =
+        middle;
+
+
+    const bottomLeft =
+        wrist;
+
+
+    const center =
+        averagePoint(
+            topLeft,
+            topRight,
+            bottomRight,
+            bottomLeft
+        );
+
+
+    const compression =
+        0.8 +
+        pinchAmount *
+        0.2;
+
+
+    const a =
+        scaleAround(
+            topLeft,
+            center,
+            compression
+        );
+
+
+    const b =
+        scaleAround(
+            topRight,
+            center,
+            compression
+        );
+
+
+    const c =
+        scaleAround(
+            bottomRight,
+            center,
+            compression
+        );
+
+
+    const d =
+        scaleAround(
+            bottomLeft,
+            center,
+            compression
+        );
+
+
+    /*
+        Outer frame.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.9)";
+
+
+    ctx.lineWidth = 2.5;
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+
+    ctx.lineTo(
+        b.x,
+        b.y
+    );
+
+
+    ctx.lineTo(
+        c.x,
+        c.y
+    );
+
+
+    ctx.lineTo(
+        d.x,
+        d.y
+    );
+
+
+    ctx.closePath();
+
+
+    ctx.stroke();
+
+
+    /*
+        Cross deformation.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.35)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        a.x,
+        a.y
+    );
+
+
+    ctx.lineTo(
+        c.x,
+        c.y
+    );
+
+
+    ctx.moveTo(
+        b.x,
+        b.y
+    );
+
+
+    ctx.lineTo(
+        d.x,
+        d.y
+    );
+
+
+    ctx.stroke();
+
+
+    /*
+        Extra tracked fingers.
+    */
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        center.x,
+        center.y
+    );
+
+
+    ctx.lineTo(
+        ring.x,
+        ring.y
+    );
+
+
+    ctx.moveTo(
+        center.x,
+        center.y
+    );
+
+
+    ctx.lineTo(
+        pinky.x,
+        pinky.y
+    );
+
+
+    ctx.stroke();
+
+
+    for (
+        const p
+        of [
+            a,
+            b,
+            c,
+            d,
+            ring,
+            pinky
+        ]
+    ) {
+
+        drawGeometryPoint(
+            p
+        );
+    }
+}
+
+
+/* =========================================================
+   TWO-HAND GEOMETRY
+========================================================= */
+
+function drawTwoHandGeometry(
+    handA,
+    handB,
+    timestamp
+) {
+
+    /*
+        Two hands create one deformable surface.
+
+        The geometry is controlled by the actual
+        thumb/index landmarks of both hands.
+    */
+
+    const aIndex =
+        smoothPoint(
+            "A_INDEX",
+            point(handA[8])
+        );
+
+
+    const aThumb =
+        smoothPoint(
+            "A_THUMB",
+            point(handA[4])
+        );
+
+
+    const aPinky =
+        smoothPoint(
+            "A_PINKY",
+            point(handA[20])
+        );
+
+
+    const bIndex =
+        smoothPoint(
+            "B_INDEX",
+            point(handB[8])
+        );
+
+
+    const bThumb =
+        smoothPoint(
+            "B_THUMB",
+            point(handB[4])
+        );
+
+
+    const bPinky =
+        smoothPoint(
+            "B_PINKY",
+            point(handB[20])
+        );
+
+
+    const topLeft =
+        aIndex;
+
+
+    const topRight =
+        bIndex;
+
+
+    const bottomRight =
+        bThumb;
+
+
+    const bottomLeft =
+        aThumb;
+
+
+    ctx.save();
+
+
+    if (
+        geometryMode === 0
+    ) {
+
+        drawQuadWarp(
+            topLeft,
+            topRight,
+            bottomRight,
+            bottomLeft,
+            1,
+            timestamp
+        );
+
+
+    } else if (
+        geometryMode === 1
+    ) {
+
+        drawLandmarkDiamond(
+            aThumb,
+            bIndex,
+            bThumb,
+            aIndex,
+            1,
+            timestamp
+        );
+
+
+    } else if (
+        geometryMode === 2
+    ) {
+
+        drawLandmarkShard(
+            aThumb,
+            bIndex,
+            bThumb,
+            bPinky,
+            aPinky,
+            aIndex,
+            1,
+            timestamp
+        );
+
+
+    } else {
+
+        drawLandmarkFrame(
+            aThumb,
+            bThumb,
+            bIndex,
+            bPinky,
+            aPinky,
+            aIndex,
+            1,
+            timestamp
+        );
+    }
+
+
+    /*
+        Structural line between pinkies.
+    */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.25)";
+
+
+    ctx.lineWidth = 1;
+
+
+    ctx.beginPath();
+
+
+    ctx.moveTo(
+        aPinky.x,
+        aPinky.y
+    );
+
+
+    ctx.lineTo(
+        bPinky.x,
+        bPinky.y
+    );
+
+
+    ctx.stroke();
+
+
+    drawGeometryPoint(
+        aIndex
+    );
+
+
+    drawGeometryPoint(
+        aThumb
+    );
+
+
+    drawGeometryPoint(
+        bIndex
+    );
+
+
+    drawGeometryPoint(
+        bThumb
+    );
+
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   GEOMETRY CONTROL POINT
+========================================================= */
+
+function drawGeometryPoint(
+    p
+) {
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.75)";
+
+
+    ctx.lineWidth = 1.5;
+
+
+    ctx.beginPath();
+
+
+    ctx.arc(
+        p.x,
+        p.y,
+        3.5,
+        0,
+        Math.PI * 2
+    );
+
 
     ctx.stroke();
 
 
     ctx.restore();
+}
+
+
+/* =========================================================
+   POINT MATH
+========================================================= */
+
+function averagePoint(
+    ...points
+) {
+
+    let x = 0;
+
+    let y = 0;
+
+
+    for (
+        const p
+        of points
+    ) {
+
+        x += p.x;
+
+        y += p.y;
+    }
+
+
+    return {
+
+        x:
+            x /
+            points.length,
+
+        y:
+            y /
+            points.length
+    };
+}
+
+
+/* =========================================================
+   LINEAR INTERPOLATION
+========================================================= */
+
+function lerpPoint(
+    a,
+    b,
+    amount
+) {
+
+    return {
+
+        x:
+            a.x +
+            (
+                b.x -
+                a.x
+            ) *
+            amount,
+
+        y:
+            a.y +
+            (
+                b.y -
+                a.y
+            ) *
+            amount
+    };
+}
+
+
+/* =========================================================
+   SCALE A POINT AROUND CENTER
+========================================================= */
+
+function scaleAround(
+    pointValue,
+    center,
+    scale
+) {
+
+    return {
+
+        x:
+            center.x +
+            (
+                pointValue.x -
+                center.x
+            ) *
+            scale,
+
+        y:
+            center.y +
+            (
+                pointValue.y -
+                center.y
+            ) *
+            scale
+    };
+}
+
+
+/* =========================================================
+   SMOOTH LANDMARK
+========================================================= */
+
+function smoothPoint(
+    id,
+    target
+) {
+
+    const previous =
+        geometrySmooth.get(
+            id
+        );
+
+
+    if (!previous) {
+
+        geometrySmooth.set(
+            id,
+            {
+                x: target.x,
+                y: target.y
+            }
+        );
+
+
+        return target;
+    }
+
+
+    previous.x +=
+        (
+            target.x -
+            previous.x
+        ) *
+        GEOMETRY_SMOOTHING;
+
+
+    previous.y +=
+        (
+            target.y -
+            previous.y
+        ) *
+        GEOMETRY_SMOOTHING;
+
+
+    return previous;
 }
 
 
@@ -2111,36 +2942,43 @@ function drawHands() {
 
 
         for (
-            const [a,b]
+            const [a, b]
             of connections
         ) {
 
             const p1 =
-                point(hand[a]);
+                point(
+                    hand[a]
+                );
+
 
             const p2 =
-                point(hand[b]);
+                point(
+                    hand[b]
+                );
 
 
             ctx.beginPath();
+
 
             ctx.moveTo(
                 p1.x,
                 p1.y
             );
 
+
             ctx.lineTo(
                 p2.x,
                 p2.y
             );
+
 
             ctx.stroke();
         }
 
 
         /*
-            Don't overload mobile GPU
-            with every joint in boost.
+            Joint dots.
         */
 
         if (!fpsBoost) {
@@ -2160,6 +2998,7 @@ function drawHands() {
 
                 ctx.beginPath();
 
+
                 ctx.arc(
                     pos.x,
                     pos.y,
@@ -2167,6 +3006,7 @@ function drawHands() {
                     0,
                     Math.PI * 2
                 );
+
 
                 ctx.fill();
             }
@@ -2178,7 +3018,9 @@ function drawHands() {
         */
 
         const index =
-            point(hand[8]);
+            point(
+                hand[8]
+            );
 
 
         ctx.strokeStyle =
@@ -2187,6 +3029,7 @@ function drawHands() {
 
         ctx.beginPath();
 
+
         ctx.arc(
             index.x,
             index.y,
@@ -2194,6 +3037,7 @@ function drawHands() {
             0,
             Math.PI * 2
         );
+
 
         ctx.stroke();
 
@@ -2208,11 +3052,15 @@ function drawHands() {
         ) {
 
             const points =
-                hand.map(point);
+                hand.map(
+                    point
+                );
 
 
             const bounds =
-                getBounds(points);
+                getBounds(
+                    points
+                );
 
 
             ctx.setLineDash([
@@ -2244,7 +3092,6 @@ function drawHands() {
 
 /* =========================================================
    FACE PIXEL PRIVACY
-   KEEPING THE STYLE YOU LIKED
 ========================================================= */
 
 function drawFacePrivacy() {
@@ -2253,6 +3100,7 @@ function drawFacePrivacy() {
         privacyMode !==
         "PIXEL"
     ) {
+
         return;
     }
 
@@ -2261,6 +3109,7 @@ function drawFacePrivacy() {
         !faceResults ||
         !faceResults.detections
     ) {
+
         return;
     }
 
@@ -2276,13 +3125,6 @@ function drawFacePrivacy() {
 
         if (!box) continue;
 
-
-        /*
-            FaceDetector uses the original
-            camera coordinates.
-
-            Convert to mirrored canvas.
-        */
 
         const x =
             canvas.width -
@@ -2326,10 +3168,6 @@ function drawFacePrivacy() {
             h + padY * 2;
 
 
-        /*
-            Pixel blocks.
-        */
-
         const block =
             Math.max(
                 12,
@@ -2343,7 +3181,7 @@ function drawFacePrivacy() {
 
 
         /*
-            Dark translucent base.
+            Base.
         */
 
         ctx.fillStyle =
@@ -2377,11 +3215,17 @@ function drawFacePrivacy() {
                 const even =
                     (
                         Math.floor(
-                            (xx - px) /
+                            (
+                                xx -
+                                px
+                            ) /
                             block
                         ) +
                         Math.floor(
-                            (yy - py) /
+                            (
+                                yy -
+                                py
+                            ) /
                             block
                         )
                     ) % 2;
@@ -2404,7 +3248,7 @@ function drawFacePrivacy() {
 
 
         /*
-            SPECTRA label.
+            Label.
         */
 
         ctx.fillStyle =
@@ -2423,7 +3267,7 @@ function drawFacePrivacy() {
 
 
         /*
-            Corner brackets.
+            Corners.
         */
 
         ctx.strokeStyle =
@@ -2471,6 +3315,7 @@ function drawFaceFilter() {
         faceFilter ===
         "OFF"
     ) {
+
         return;
     }
 
@@ -2479,6 +3324,7 @@ function drawFaceFilter() {
         !faceResults ||
         !faceResults.detections
     ) {
+
         return;
     }
 
@@ -2524,6 +3370,7 @@ function drawFaceFilter() {
             ctx.strokeStyle =
                 "rgba(255,255,255,0.9)";
 
+
             ctx.lineWidth = 2;
 
 
@@ -2537,15 +3384,18 @@ function drawFaceFilter() {
 
             ctx.beginPath();
 
+
             ctx.moveTo(
                 x,
                 y + h * 0.45
             );
 
+
             ctx.lineTo(
                 x + w,
                 y + h * 0.45
             );
+
 
             ctx.stroke();
 
@@ -2557,6 +3407,7 @@ function drawFaceFilter() {
 
             ctx.strokeStyle =
                 "rgba(255,255,255,0.85)";
+
 
             ctx.lineWidth = 2;
 
@@ -2578,15 +3429,18 @@ function drawFaceFilter() {
 
                 ctx.beginPath();
 
+
                 ctx.moveTo(
                     x,
                     yy
                 );
 
+
                 ctx.lineTo(
                     x + w,
                     yy
                 );
+
 
                 ctx.stroke();
             }
@@ -2600,35 +3454,42 @@ function drawFaceFilter() {
             ctx.strokeStyle =
                 "rgba(255,255,255,0.9)";
 
+
             ctx.lineWidth = 2;
 
 
             ctx.beginPath();
+
 
             ctx.moveTo(
                 x + w * 0.1,
                 y
             );
 
+
             ctx.lineTo(
                 x + w * 0.25,
                 y - h * 0.3
             );
+
 
             ctx.lineTo(
                 x + w * 0.5,
                 y
             );
 
+
             ctx.lineTo(
                 x + w * 0.75,
                 y - h * 0.3
             );
 
+
             ctx.lineTo(
                 x + w * 0.9,
                 y
             );
+
 
             ctx.stroke();
         }
@@ -2649,6 +3510,7 @@ function drawObjects() {
         !objectDetection ||
         !objectResults
     ) {
+
         return;
     }
 
@@ -2706,7 +3568,18 @@ function drawObjects() {
 
 
         ctx.fillText(
-            `${category?.categoryName || "OBJECT"} ${Math.round((category?.score || 0) * 100)}%`,
+            `${
+                category?.categoryName ||
+                "OBJECT"
+            } ${
+                Math.round(
+                    (
+                        category?.score ||
+                        0
+                    ) *
+                    100
+                )
+            }%`,
             x,
             Math.max(
                 12,
@@ -2724,22 +3597,36 @@ function drawObjects() {
    SIGN LANGUAGE
 ========================================================= */
 
-function getSign(hand) {
+function getSign(
+    hand
+) {
 
     const index =
-        fingerUp(hand, 8);
+        fingerUp(
+            hand,
+            8
+        );
 
 
     const middle =
-        fingerUp(hand, 12);
+        fingerUp(
+            hand,
+            12
+        );
 
 
     const ring =
-        fingerUp(hand, 16);
+        fingerUp(
+            hand,
+            16
+        );
 
 
     const pinky =
-        fingerUp(hand, 20);
+        fingerUp(
+            hand,
+            20
+        );
 
 
     if (
@@ -2817,17 +3704,15 @@ function fingerUp(
    GET GESTURE
 ========================================================= */
 
-function getGesture(index) {
+function getGesture(
+    index
+) {
 
     return (
         handResults
             ?.gestures
-            ?.[
-                index
-            ]
-            ?.[
-                0
-            ]
+            ?.[index]
+            ?.[0]
             ?.categoryName ||
         "None"
     );
@@ -2838,14 +3723,20 @@ function getGesture(index) {
    PINCH
 ========================================================= */
 
-function isPinching(hand) {
+function isPinching(
+    hand
+) {
 
     const thumb =
-        point(hand[4]);
+        point(
+            hand[4]
+        );
 
 
     const index =
-        point(hand[8]);
+        point(
+            hand[8]
+        );
 
 
     return (
@@ -2861,22 +3752,32 @@ function isPinching(hand) {
    PALM CENTER
 ========================================================= */
 
-function getPalmCenter(hand) {
+function getPalmCenter(
+    hand
+) {
 
     const a =
-        point(hand[0]);
+        point(
+            hand[0]
+        );
 
 
     const b =
-        point(hand[5]);
+        point(
+            hand[5]
+        );
 
 
     const c =
-        point(hand[9]);
+        point(
+            hand[9]
+        );
 
 
     const d =
-        point(hand[17]);
+        point(
+            hand[17]
+        );
 
 
     return {
@@ -2901,16 +3802,20 @@ function getPalmCenter(hand) {
 
 
 /* =========================================================
-   LANDMARK → CANVAS
+   NORMALIZED LANDMARK → CANVAS
 ========================================================= */
 
-function point(p) {
+function point(
+    p
+) {
 
     return {
 
         /*
-            Mirror X because the camera
-            is mirrored.
+            MediaPipe x is normalized:
+            0 → 1
+
+            Mirror because the webcam is mirrored.
         */
 
         x:
@@ -2919,6 +3824,12 @@ function point(p) {
                 p.x
             ) *
             canvas.width,
+
+
+        /*
+            MediaPipe y is normalized:
+            0 → 1
+        */
 
         y:
             p.y *
@@ -2931,7 +3842,10 @@ function point(p) {
    DISTANCE
 ========================================================= */
 
-function distance(a, b) {
+function distance(
+    a,
+    b
+) {
 
     return Math.hypot(
         a.x - b.x,
@@ -2944,16 +3858,21 @@ function distance(a, b) {
    BOUNDS
 ========================================================= */
 
-function getBounds(points) {
+function getBounds(
+    points
+) {
 
     let minX =
         Infinity;
 
+
     let minY =
         Infinity;
 
+
     let maxX =
         -Infinity;
+
 
     let maxY =
         -Infinity;
@@ -2996,8 +3915,11 @@ function getBounds(points) {
     return {
 
         minX,
+
         minY,
+
         maxX,
+
         maxY,
 
         width:
@@ -3028,15 +3950,21 @@ function drawCorners(
     ctx.beginPath();
 
 
+    /*
+        Top left.
+    */
+
     ctx.moveTo(
         x,
         y + s
     );
 
+
     ctx.lineTo(
         x,
         y
     );
+
 
     ctx.lineTo(
         x + s,
@@ -3044,31 +3972,43 @@ function drawCorners(
     );
 
 
+    /*
+        Top right.
+    */
+
     ctx.moveTo(
         x + width - s,
         y
     );
 
+
     ctx.lineTo(
         x + width,
         y
     );
+
 
     ctx.lineTo(
         x + width,
         y + s
     );
 
+
+    /*
+        Bottom left.
+    */
 
     ctx.moveTo(
         x,
         y + height - s
     );
 
+
     ctx.lineTo(
         x,
         y + height
     );
+
 
     ctx.lineTo(
         x + s,
@@ -3076,15 +4016,21 @@ function drawCorners(
     );
 
 
+    /*
+        Bottom right.
+    */
+
     ctx.moveTo(
         x + width - s,
         y + height
     );
 
+
     ctx.lineTo(
         x + width,
         y + height
     );
+
 
     ctx.lineTo(
         x + width,
@@ -3100,9 +4046,12 @@ function drawCorners(
    SHAPE STATUS
 ========================================================= */
 
-function setShapeStatus(text) {
+function setShapeStatus(
+    text
+) {
 
     if (!shapeDisplay) return;
+
 
     shapeDisplay.textContent =
         text;
@@ -3159,32 +4108,6 @@ function updateFPS() {
 /* =========================================================
    STARTUP
 ========================================================= */
-
-console.log(
-    "================================"
-);
-
-console.log(
-    "SPECTRA // READY"
-);
-
-console.log(
-    isMobile
-        ? "DEVICE // MOBILE"
-        : "DEVICE // DESKTOP"
-);
-
-console.log(
-    "HAND VFX // ENABLED"
-);
-
-console.log(
-    "FACE PIXEL // AVAILABLE"
-);
-
-console.log(
-    "FPS BOOST // AVAILABLE"
-);
 
 console.log(
     "================================"
