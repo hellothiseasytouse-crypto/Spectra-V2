@@ -369,7 +369,9 @@ async function loadVision() {
     if (vision) return vision;
 
     if (modelsLoading) {
+
         while (modelsLoading) {
+
             await new Promise(resolve =>
                 setTimeout(resolve, 50)
             );
@@ -534,9 +536,11 @@ async function startCamera() {
             await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: "user",
+
                     width: {
                         ideal: 1280
                     },
+
                     height: {
                         ideal: 720
                     }
@@ -558,10 +562,12 @@ async function startCamera() {
         resizeCanvas();
 
         loadVision().catch(error => {
+
             console.error(
                 "SPECTRA model loading failed:",
                 error
             );
+
         });
 
         requestAnimationFrame(renderLoop);
@@ -676,6 +682,7 @@ function drawVideo() {
 
 // ============================================================
 // LANDMARK -> CANVAS
+// FIXED FOR MIRRORED CAMERA
 // ============================================================
 
 function landmarkToCanvas(landmark) {
@@ -683,7 +690,7 @@ function landmarkToCanvas(landmark) {
     if (!landmark) return null;
 
     return {
-        x: landmark.x * canvas.width,
+        x: (1 - landmark.x) * canvas.width,
         y: landmark.y * canvas.height
     };
 }
@@ -869,6 +876,7 @@ function checkDoublePinch(hands) {
             firstPinchTime >
             DOUBLE_PINCH_WINDOW
         ) {
+
             firstPinchTime = 0;
         }
 
@@ -922,6 +930,7 @@ function cycleGeometryFilter() {
         geometryFilterIndex >=
         GEOMETRY_FILTERS.length
     ) {
+
         geometryFilterIndex = 0;
     }
 
@@ -931,6 +940,7 @@ function cycleGeometryFilter() {
         ];
 
     if (filterDisplay) {
+
         filterDisplay.textContent =
             `FILTER // ${geometryFilter}`;
     }
@@ -944,16 +954,6 @@ function cycleGeometryFilter() {
 
 // ============================================================
 // GET HAND GEOMETRY POINTS
-//
-// THIS IS THE IMPORTANT PART.
-//
-// The geometry is now directly attached to:
-// thumb tip = 4
-// index tip = 8
-// middle tip = 12
-// ring tip = 16
-//
-// No floating arbitrary points.
 // ============================================================
 
 function getHandGeometry(hands) {
@@ -965,27 +965,35 @@ function getHandGeometry(hands) {
 
     // --------------------------------------------------------
     // TWO HANDS
-    //
-    // Shape connects directly to the thumb/index fingertips
-    // of both hands.
     // --------------------------------------------------------
 
     if (hands.length >= 2) {
 
-        const handA = hands[0];
-        const handB = hands[1];
+        const handA =
+            hands[0];
+
+        const handB =
+            hands[1];
 
         const aThumb =
-            landmarkToCanvas(handA[4]);
+            landmarkToCanvas(
+                handA[4]
+            );
 
         const aIndex =
-            landmarkToCanvas(handA[8]);
+            landmarkToCanvas(
+                handA[8]
+            );
 
         const bThumb =
-            landmarkToCanvas(handB[4]);
+            landmarkToCanvas(
+                handB[4]
+            );
 
         const bIndex =
-            landmarkToCanvas(handB[8]);
+            landmarkToCanvas(
+                handB[8]
+            );
 
         if (
             !aThumb ||
@@ -993,10 +1001,12 @@ function getHandGeometry(hands) {
             !bThumb ||
             !bIndex
         ) {
+
             return null;
         }
 
         const points = [
+
             trackedPoint(
                 "A_INDEX",
                 aIndex
@@ -1024,29 +1034,30 @@ function getHandGeometry(hands) {
 
     // --------------------------------------------------------
     // ONE HAND
-    //
-    // Shape is literally built from the hand's fingertips.
-    //
-    // index
-    // middle
-    // ring
-    // thumb
     // --------------------------------------------------------
 
     const hand =
         hands[0];
 
     const index =
-        landmarkToCanvas(hand[8]);
+        landmarkToCanvas(
+            hand[8]
+        );
 
     const middle =
-        landmarkToCanvas(hand[12]);
+        landmarkToCanvas(
+            hand[12]
+        );
 
     const ring =
-        landmarkToCanvas(hand[16]);
+        landmarkToCanvas(
+            hand[16]
+        );
 
     const thumb =
-        landmarkToCanvas(hand[4]);
+        landmarkToCanvas(
+            hand[4]
+        );
 
     if (
         !index ||
@@ -1054,10 +1065,12 @@ function getHandGeometry(hands) {
         !ring ||
         !thumb
     ) {
+
         return null;
     }
 
     return [
+
         trackedPoint(
             "ONE_INDEX",
             index
@@ -1091,6 +1104,7 @@ function averagePoint(points) {
     let y = 0;
 
     for (const point of points) {
+
         x += point.x;
         y += point.y;
     }
@@ -1188,9 +1202,7 @@ function getGeometryFilterValue() {
 // DRAW FILTERED GEOMETRY
 // ============================================================
 
-function drawFilteredGeometry(
-    points
-) {
+function drawFilteredGeometry(points) {
 
     if (!points || points.length < 3) {
         return;
@@ -1203,11 +1215,6 @@ function drawFilteredGeometry(
         geometryCanvas.height
     );
 
-
-    // --------------------------------------------------------
-    // CLIP TO HAND GEOMETRY
-    // --------------------------------------------------------
-
     geometryCtx.save();
 
     createPolygonPath(
@@ -1217,18 +1224,8 @@ function drawFilteredGeometry(
 
     geometryCtx.clip();
 
-
-    // --------------------------------------------------------
-    // APPLY CSS-STYLE FILTER
-    // --------------------------------------------------------
-
     geometryCtx.filter =
         getGeometryFilterValue();
-
-
-    // --------------------------------------------------------
-    // DRAW MIRRORED VIDEO
-    // --------------------------------------------------------
 
     geometryCtx.translate(
         geometryCanvas.width,
@@ -1250,11 +1247,6 @@ function drawFilteredGeometry(
 
     geometryCtx.restore();
 
-
-    // --------------------------------------------------------
-    // COMPOSITE FILTERED AREA
-    // --------------------------------------------------------
-
     ctx.save();
 
     ctx.globalCompositeOperation =
@@ -1274,9 +1266,7 @@ function drawFilteredGeometry(
 // GEOMETRY BORDER
 // ============================================================
 
-function drawGeometryBorder(
-    points
-) {
+function drawGeometryBorder(points) {
 
     if (!points || points.length < 3) {
         return;
@@ -1309,9 +1299,7 @@ function drawGeometryBorder(
 // CORNER POINTS
 // ============================================================
 
-function drawGeometryCorners(
-    points
-) {
+function drawGeometryCorners(points) {
 
     ctx.save();
 
@@ -1511,9 +1499,7 @@ function drawMeasurementOutside(
 // GEOMETRY MEASUREMENTS
 // ============================================================
 
-function drawPolygonMeasurements(
-    points
-) {
+function drawPolygonMeasurements(points) {
 
     if (!points || points.length < 3) {
         return;
@@ -1571,9 +1557,6 @@ function drawPolygonMeasurements(
 
         return;
     }
-
-
-    // Generic measurement for other shapes
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -1652,44 +1635,28 @@ function drawPolygonMeasurements(
 // GEOMETRY MODES
 // ============================================================
 
-function drawGeometryMode(
-    points
-) {
+function drawGeometryMode(points) {
 
     if (!points || points.length < 3) {
         return;
     }
 
-
-    // --------------------------------------------------------
-    // QUAD
-    // --------------------------------------------------------
-
     if (geometryMode === "QUAD WARP") {
 
-        drawFilteredGeometry(
-            points
-        );
+        drawFilteredGeometry(points);
 
-        drawGeometryBorder(
-            points
-        );
+        drawGeometryBorder(points);
 
         return;
     }
-
-
-    // --------------------------------------------------------
-    // DIAMOND
-    // --------------------------------------------------------
 
     if (geometryMode === "DIAMOND") {
 
         const center =
             averagePoint(points);
 
-        const diamond = points.map(
-            point => {
+        const diamond =
+            points.map(point => {
 
                 return {
                     x:
@@ -1702,24 +1669,14 @@ function drawGeometryMode(
                         (point.y - center.y) *
                         1.12
                 };
-            }
-        );
+            });
 
-        drawFilteredGeometry(
-            diamond
-        );
+        drawFilteredGeometry(diamond);
 
-        drawGeometryBorder(
-            diamond
-        );
+        drawGeometryBorder(diamond);
 
         return;
     }
-
-
-    // --------------------------------------------------------
-    // SHARD
-    // --------------------------------------------------------
 
     if (geometryMode === "SHARD") {
 
@@ -1749,21 +1706,12 @@ function drawGeometryMode(
                 }
             );
 
-        drawFilteredGeometry(
-            shard
-        );
+        drawFilteredGeometry(shard);
 
-        drawGeometryBorder(
-            shard
-        );
+        drawGeometryBorder(shard);
 
         return;
     }
-
-
-    // --------------------------------------------------------
-    // FRAME
-    // --------------------------------------------------------
 
     if (geometryMode === "FRAME") {
 
@@ -1771,26 +1719,22 @@ function drawGeometryMode(
             averagePoint(points);
 
         const outer =
-            points.map(
-                point => {
+            points.map(point => {
 
-                    return {
-                        x:
-                            center.x +
-                            (point.x - center.x) *
-                            1.18,
+                return {
+                    x:
+                        center.x +
+                        (point.x - center.x) *
+                        1.18,
 
-                        y:
-                            center.y +
-                            (point.y - center.y) *
-                            1.18
-                    };
-                }
-            );
+                    y:
+                        center.y +
+                        (point.y - center.y) *
+                        1.18
+                };
+            });
 
-        drawFilteredGeometry(
-            outer
-        );
+        drawFilteredGeometry(outer);
 
         ctx.save();
 
@@ -1827,13 +1771,12 @@ function drawGeometryMode(
 // HAND SKELETON
 // ============================================================
 
-function drawHandSkeleton(
-    hands
-) {
+function drawHandSkeleton(hands) {
 
     if (!hands) return;
 
     const connections = [
+
         [0, 1],
         [1, 2],
         [2, 3],
@@ -1939,9 +1882,7 @@ function drawHandSkeleton(
 // TARGET BOX
 // ============================================================
 
-function drawTargetBox(
-    hands
-) {
+function drawTargetBox(hands) {
 
     if (!targetVisible) return;
 
@@ -1961,6 +1902,8 @@ function drawTargetBox(
                 landmarkToCanvas(
                     landmark
                 );
+
+            if (!point) continue;
 
             minX =
                 Math.min(
@@ -2023,9 +1966,7 @@ function drawTargetBox(
 // FACE PIXEL PRIVACY
 // ============================================================
 
-function drawFacePrivacy(
-    detections
-) {
+function drawFacePrivacy(detections) {
 
     if (
         privacyMode === "OFF" ||
@@ -2061,8 +2002,6 @@ function drawFacePrivacy(
             box.height;
 
         ctx.save();
-
-        // Old pixel-style privacy look
 
         ctx.fillStyle =
             "rgba(0,0,0,0.94)";
@@ -2119,9 +2058,6 @@ function drawFacePrivacy(
                 );
             }
         }
-
-
-        // Corners
 
         ctx.strokeStyle =
             "rgba(255,255,255,0.9)";
@@ -2183,7 +2119,6 @@ function drawFacePrivacy(
 
         ctx.stroke();
 
-
         ctx.font =
             "bold 10px monospace";
 
@@ -2214,9 +2149,7 @@ function drawFacePrivacy(
 // FACE FILTER
 // ============================================================
 
-function drawFaceFilter(
-    detections
-) {
+function drawFaceFilter(detections) {
 
     if (
         faceFilter === "OFF" ||
@@ -2324,9 +2257,7 @@ function drawFaceFilter(
 // OBJECT DETECTION
 // ============================================================
 
-function drawObjects(
-    results
-) {
+function drawObjects(results) {
 
     if (
         !objectDetection ||
@@ -2400,7 +2331,8 @@ function drawObjects(
             `${name.toUpperCase()} ${score}%`;
 
         const labelWidth =
-            ctx.measureText(label).width + 10;
+            ctx.measureText(label).width +
+            10;
 
         ctx.fillRect(
             x,
@@ -2427,9 +2359,7 @@ function drawObjects(
 // GESTURE DISPLAY
 // ============================================================
 
-function updateGestureDisplay(
-    results
-) {
+function updateGestureDisplay(results) {
 
     if (!gestureDisplay) return;
 
@@ -2473,9 +2403,7 @@ function updateGestureDisplay(
 // SIGN LANGUAGE
 // ============================================================
 
-function getSignName(
-    gestureName
-) {
+function getSignName(gestureName) {
 
     const signs = {
 
@@ -2504,9 +2432,7 @@ function getSignName(
 }
 
 
-function updateSignDisplay(
-    results
-) {
+function updateSignDisplay(results) {
 
     if (!signDisplay) return;
 
@@ -2596,9 +2522,7 @@ function updateFPSDisplay() {
 // DETECTION
 // ============================================================
 
-async function detectHands(
-    timestamp
-) {
+async function detectHands(timestamp) {
 
     if (!gestureRecognizer) {
         return;
@@ -2637,9 +2561,7 @@ async function detectHands(
 // FACE DETECTION
 // ============================================================
 
-async function detectFace(
-    timestamp
-) {
+async function detectFace(timestamp) {
 
     if (!faceDetector) {
         return;
@@ -2678,9 +2600,7 @@ async function detectFace(
 // OBJECT DETECTION
 // ============================================================
 
-async function detectObjects(
-    timestamp
-) {
+async function detectObjects(timestamp) {
 
     if (
         !objectDetector ||
@@ -2740,8 +2660,6 @@ function renderGeometry() {
             GEOMETRY_PERSISTENCE
         ) {
 
-            // Keep last geometry very briefly
-            // so fast movements don't make it pop.
             const points =
                 geometryPoints.get(
                     "current"
@@ -2766,7 +2684,6 @@ function renderGeometry() {
         return;
     }
 
-
     const points =
         getHandGeometry(
             hands
@@ -2775,7 +2692,6 @@ function renderGeometry() {
     if (!points || points.length < 3) {
         return;
     }
-
 
     geometryPoints.set(
         "current",
@@ -2787,27 +2703,17 @@ function renderGeometry() {
     geometryLastSeen =
         performance.now();
 
-
-    // Main filtered shape
-
     drawGeometryMode(
         points
     );
-
-
-    // Fingertip anchors
 
     drawGeometryCorners(
         points
     );
 
-
-    // Measurements
-
     drawPolygonMeasurements(
         points
     );
-
 
     if (geometryDisplay) {
 
@@ -3152,6 +3058,7 @@ window.addEventListener(
                 geometryModeIndex >=
                 GEOMETRY_MODES.length
             ) {
+
                 geometryModeIndex = 0;
             }
 
@@ -3161,12 +3068,10 @@ window.addEventListener(
                 ];
         }
 
-
         if (event.key === "f") {
 
             cycleGeometryFilter();
         }
-
 
         if (event.key === "r") {
 
@@ -3228,6 +3133,7 @@ async function renderLoop() {
         await detectHands(
             timestamp
         );
+
     } else {
 
         handResults = null;
@@ -3327,71 +3233,85 @@ async function renderLoop() {
 // ============================================================
 
 if (gestureDisplay) {
+
     gestureDisplay.textContent =
         "GESTURE // NONE";
 }
 
 if (signDisplay) {
+
     signDisplay.textContent =
         "SIGN // OFF";
 }
 
 if (fpsDisplay) {
+
     fpsDisplay.textContent =
         "FPS // --";
 }
 
 if (geometryDisplay) {
+
     geometryDisplay.textContent =
         "GEOMETRY // QUAD WARP";
 }
 
 if (filterDisplay) {
+
     filterDisplay.textContent =
         "FILTER // NORMAL";
 }
 
 if (targetDisplay) {
+
     targetDisplay.textContent =
         "TARGET // READY";
 }
 
 if (cameraBtn) {
+
     cameraBtn.textContent =
         "START CAMERA";
 }
 
 if (handBtn) {
+
     handBtn.textContent =
         "HANDS ON";
 }
 
 if (targetBtn) {
+
     targetBtn.textContent =
         "TARGET ON";
 }
 
 if (objectBtn) {
+
     objectBtn.textContent =
         "OBJECTS OFF";
 }
 
 if (signBtn) {
+
     signBtn.textContent =
         "SIGN OFF";
 }
 
 if (shapeBtn) {
+
     shapeBtn.textContent =
         "GEOMETRY ON";
 }
 
 if (privacyBtn) {
+
     privacyBtn.textContent =
         "PRIVACY OFF";
 }
 
 if (fpsBoostBtn) {
+
     fpsBoostBtn.textContent =
         "FPS BOOST OFF";
 }
