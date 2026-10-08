@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
 
     <meta
@@ -9,27 +10,54 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>SPECTRA v0.3</title>
+    <title>SPECTRA v0.5</title>
 
-    <link rel="stylesheet" href="style.css">
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
 </head>
+
 
 <body>
 
     <main class="app">
 
+
+        <!-- =================================================
+             TOP BAR
+        ================================================== -->
+
         <header class="topbar">
+
             <div>
+
                 <h1>SPECTRA</h1>
-                <p>HAND TRACKING SYSTEM // v0.3</p>
+
+                <p>
+                    VISION INTERACTION SYSTEM // v0.5
+                </p>
+
             </div>
+
 
             <div class="system-status">
+
                 <span id="statusDot"></span>
-                <span id="systemStatus">OFFLINE</span>
+
+                <span id="systemStatus">
+                    OFFLINE
+                </span>
+
             </div>
+
         </header>
 
+
+        <!-- =================================================
+             CAMERA
+        ================================================== -->
 
         <section class="camera-wrapper">
 
@@ -40,20 +68,28 @@
                 muted
             ></video>
 
-            <canvas id="overlay"></canvas>
+
+            <canvas
+                id="overlay"
+            ></canvas>
+
 
             <div class="scanlines"></div>
+
 
             <div id="cameraMessage">
                 CAMERA OFF
             </div>
 
 
-            <!-- Top-left HUD -->
+            <!-- TOP LEFT -->
 
             <div class="hud hud-top-left">
 
-                <div>MODE // HAND TRACK</div>
+                <div>
+                    MODE // VISION
+                </div>
+
                 <div id="handState">
                     HAND // NOT DETECTED
                 </div>
@@ -61,41 +97,70 @@
             </div>
 
 
-            <!-- Top-right HUD -->
+            <!-- TOP RIGHT -->
 
             <div class="hud hud-top-right">
 
-                <div>TARGET // <span id="targetNumber">00</span></div>
-
                 <div>
-                    X:<span id="xValue">---</span>
-                    Y:<span id="yValue">---</span>
-                </div>
-
-            </div>
-
-
-            <!-- Bottom-left HUD -->
-
-            <div class="hud hud-bottom-left">
-
-                <div>FPS <span id="fpsValue">00</span></div>
-
-                <div>
-                    STATE
-                    <span id="trackingState">
-                        IDLE
+                    TARGET //
+                    <span id="targetNumber">
+                        00
                     </span>
                 </div>
 
+                <div>
+
+                    X:
+                    <span id="xValue">
+                        ---
+                    </span>
+
+                    Y:
+                    <span id="yValue">
+                        ---
+                    </span>
+
+                </div>
+
             </div>
 
 
-            <!-- Bottom-right HUD -->
+            <!-- BOTTOM LEFT -->
+
+            <div class="hud hud-bottom-left">
+
+                <div>
+
+                    FPS
+                    <span id="fpsValue">
+                        00
+                    </span>
+
+                </div>
+
+
+                <div>
+
+                    STATE
+
+                    <span id="trackingState">
+                        IDLE
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <!-- BOTTOM RIGHT -->
 
             <div class="hud hud-bottom-right">
 
-                <div>SPECTRA</div>
+                <div>
+                    SPECTRA
+                </div>
+
+
                 <div id="gestureText">
                     GESTURE // NONE
                 </div>
@@ -105,11 +170,17 @@
         </section>
 
 
+        <!-- =================================================
+             CONTROLS
+        ================================================== -->
+
         <section class="controls">
+
 
             <button id="startButton">
                 START CAMERA
             </button>
+
 
             <button
                 id="trackingButton"
@@ -118,30 +189,93 @@
                 HAND TRACKING
             </button>
 
+
+            <button id="boxButton">
+                TARGET BOX ON
+            </button>
+
+
+            <button id="objectButton">
+                OBJECT DETECTION OFF
+            </button>
+
+
+            <button id="privacyButton">
+                FACE PRIVACY OFF
+            </button>
+
+
+            <button id="signButton">
+                SIGN LANGUAGE OFF
+            </button>
+
+
+            <button id="objectModeButton">
+                OBJECT MODE ON
+            </button>
+
+
         </section>
 
 
+        <!-- =================================================
+             INFORMATION PANEL
+        ================================================== -->
+
         <section class="info-panel">
 
-            <div class="info-item">
-                <span>HANDS</span>
-                <strong id="handsValue">0</strong>
-            </div>
 
             <div class="info-item">
-                <span>INDEX</span>
-                <strong id="indexValue">---</strong>
+
+                <span>
+                    HANDS
+                </span>
+
+                <strong id="handsValue">
+                    0
+                </strong>
+
             </div>
 
-            <div class="info-item">
-                <span>PINCH</span>
-                <strong id="pinchValue">---</strong>
-            </div>
 
             <div class="info-item">
-                <span>GESTURE</span>
-                <strong id="gestureValue">NONE</strong>
+
+                <span>
+                    INDEX
+                </span>
+
+                <strong id="indexValue">
+                    ---
+                </strong>
+
             </div>
+
+
+            <div class="info-item">
+
+                <span>
+                    PINCH
+                </span>
+
+                <strong id="pinchValue">
+                    ---
+                </strong>
+
+            </div>
+
+
+            <div class="info-item">
+
+                <span>
+                    GESTURE
+                </span>
+
+                <strong id="gestureValue">
+                    NONE
+                </strong>
+
+            </div>
+
 
         </section>
 
@@ -149,6 +283,7 @@
         <p id="status">
             System ready.
         </p>
+
 
     </main>
 
