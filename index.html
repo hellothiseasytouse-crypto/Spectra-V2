@@ -3,10 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
 
-    <title>SPECTRA</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SPECTRA v0.3</title>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -18,89 +21,85 @@
         <header class="topbar">
             <div>
                 <h1>SPECTRA</h1>
-                <span>VISION SYSTEM v0.2</span>
+                <p>HAND TRACKING SYSTEM // v0.3</p>
             </div>
 
             <div class="system-status">
-                <span class="status-dot"></span>
+                <span id="statusDot"></span>
                 <span id="systemStatus">OFFLINE</span>
             </div>
         </header>
 
 
-        <section class="camera-panel">
+        <section class="camera-wrapper">
 
-            <video id="camera"
-                   autoplay
-                   playsinline
-                   muted>
-            </video>
+            <video
+                id="camera"
+                autoplay
+                playsinline
+                muted
+            ></video>
 
             <canvas id="overlay"></canvas>
 
+            <div class="scanlines"></div>
 
             <div id="cameraMessage">
-                <div>
-                    <strong>CAMERA OFFLINE</strong>
-                    <small>Press START SYSTEM</small>
-                </div>
+                CAMERA OFF
             </div>
 
 
-            <!-- Top HUD -->
+            <!-- Top-left HUD -->
 
-            <div class="hud top-left">
-                <span>SPECTRA // TRACK</span>
-                <span id="trackingState">NO TARGET</span>
-            </div>
+            <div class="hud hud-top-left">
 
-
-            <!-- Coordinates -->
-
-            <div class="hud coordinates">
-
-                <div>
-                    <span>X</span>
-                    <strong id="posX">---</strong>
-                </div>
-
-                <div>
-                    <span>Y</span>
-                    <strong id="posY">---</strong>
-                </div>
-
-                <div>
-                    <span>DX</span>
-                    <strong id="deltaX">---</strong>
-                </div>
-
-                <div>
-                    <span>DY</span>
-                    <strong id="deltaY">---</strong>
+                <div>MODE // HAND TRACK</div>
+                <div id="handState">
+                    HAND // NOT DETECTED
                 </div>
 
             </div>
 
 
-            <!-- Bottom information -->
+            <!-- Top-right HUD -->
 
-            <div class="hud bottom-left">
+            <div class="hud hud-top-right">
 
-                <div>
-                    <span>FPS</span>
-                    <strong id="fps">00</strong>
-                </div>
+                <div>TARGET // <span id="targetNumber">00</span></div>
 
                 <div>
-                    <span>STATE</span>
-                    <strong id="targetState">STANDBY</strong>
+                    X:<span id="xValue">---</span>
+                    Y:<span id="yValue">---</span>
                 </div>
 
             </div>
 
 
-            <div class="hud bottom-right">
-                SPECTRA
+            <!-- Bottom-left HUD -->
+
+            <div class="hud hud-bottom-left">
+
+                <div>FPS <span id="fpsValue">00</span></div>
+
+                <div>
+                    STATE
+                    <span id="trackingState">
+                        IDLE
+                    </span>
+                </div>
+
+            </div>
+
+
+            <!-- Bottom-right HUD -->
+
+            <div class="hud hud-bottom-right">
+
+                <div>SPECTRA</div>
+                <div id="gestureText">
+                    GESTURE // NONE
+                </div>
+
             </div>
 
         </section>
@@ -109,12 +108,40 @@
         <section class="controls">
 
             <button id="startButton">
-                START SYSTEM
+                START CAMERA
             </button>
 
-            <button id="targetButton" disabled>
-                ENABLE TRACKING
+            <button
+                id="trackingButton"
+                disabled
+            >
+                HAND TRACKING
             </button>
+
+        </section>
+
+
+        <section class="info-panel">
+
+            <div class="info-item">
+                <span>HANDS</span>
+                <strong id="handsValue">0</strong>
+            </div>
+
+            <div class="info-item">
+                <span>INDEX</span>
+                <strong id="indexValue">---</strong>
+            </div>
+
+            <div class="info-item">
+                <span>PINCH</span>
+                <strong id="pinchValue">---</strong>
+            </div>
+
+            <div class="info-item">
+                <span>GESTURE</span>
+                <strong id="gestureValue">NONE</strong>
+            </div>
 
         </section>
 
@@ -126,7 +153,10 @@
     </main>
 
 
-    <script src="script.js"></script>
+    <script
+        type="module"
+        src="script.js"
+    ></script>
 
 </body>
 
