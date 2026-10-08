@@ -2,557 +2,274 @@
     box-sizing: border-box;
 }
 
-
 html,
 body {
-
     margin: 0;
     padding: 0;
-
+    width: 100%;
     min-height: 100%;
-
-    background: #070707;
-
-    color: #f2f2f2;
-
-    font-family:
-        "Courier New",
-        monospace;
+    background: #050505;
+    color: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow-x: hidden;
 }
-
 
 body {
-
     display: flex;
-
     justify-content: center;
-
-    padding: 25px 15px;
 }
-
 
 .app {
-
-    width:
-        min(
-            1200px,
-            100%
-        );
+    width: 100%;
+    max-width: 1400px;
+    padding: 12px;
 }
-
-
-/* =========================================================
-   TOP BAR
-========================================================= */
-
-.topbar {
-
-    display: flex;
-
-    justify-content:
-        space-between;
-
-    align-items:
-        flex-end;
-
-    margin-bottom: 14px;
-}
-
-
-h1 {
-
-    margin: 0;
-
-    font-family:
-        Arial,
-        sans-serif;
-
-    font-size: 34px;
-
-    letter-spacing: 9px;
-}
-
-
-.topbar p {
-
-    margin:
-        4px 0 0;
-
-    color: #777;
-
-    font-size: 11px;
-
-    letter-spacing: 2px;
-}
-
-
-.system-status {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 8px;
-
-    color: #777;
-
-    font-size: 11px;
-
-    letter-spacing: 2px;
-}
-
-
-#statusDot {
-
-    width: 7px;
-    height: 7px;
-
-    border-radius: 50%;
-
-    background: #444;
-}
-
-
-#statusDot.active {
-
-    background: #fff;
-
-    box-shadow:
-        0 0 8px
-        rgba(
-            255,
-            255,
-            255,
-            0.8
-        );
-}
-
-
-/* =========================================================
-   CAMERA
-========================================================= */
 
 .camera-wrapper {
-
     position: relative;
-
     width: 100%;
-
-    overflow: hidden;
-
+    aspect-ratio: 16 / 9;
     background: #000;
-
-    border:
-        1px solid
-        #292929;
-
-    border-radius: 12px;
-
-    aspect-ratio:
-        16 / 9;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.15);
 }
-
 
 #camera {
-
     position: absolute;
-
     width: 100%;
     height: 100%;
-
     object-fit: cover;
 
-    left: 0;
-    top: 0;
+    /*
+        IMPORTANT:
+        The video is hidden visually.
+
+        script.js draws the camera into the canvas.
+        This allows face privacy to actually modify
+        the displayed camera image.
+    */
+    opacity: 0;
+    pointer-events: none;
 }
 
-
 #overlay {
-
     position: absolute;
-
-    left: 0;
-    top: 0;
+    inset: 0;
 
     width: 100%;
     height: 100%;
 
-    pointer-events: none;
+    display: block;
 }
-
-
-.scanlines {
-
-    position: absolute;
-
-    inset: 0;
-
-    pointer-events: none;
-
-    background:
-        repeating-linear-gradient(
-            to bottom,
-            rgba(
-                255,
-                255,
-                255,
-                0.025
-            ) 0px,
-            rgba(
-                255,
-                255,
-                255,
-                0.025
-            ) 1px,
-            transparent 1px,
-            transparent 5px
-        );
-}
-
-
-#cameraMessage {
-
-    position: absolute;
-
-    inset: 0;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: center;
-
-    color: #555;
-
-    font-size: 13px;
-
-    letter-spacing: 3px;
-}
-
-
-/* =========================================================
-   HUD
-========================================================= */
 
 .hud {
-
     position: absolute;
-
-    z-index: 5;
-
-    color:
-        rgba(
-            255,
-            255,
-            255,
-            0.8
-        );
-
-    font-size: 11px;
-
-    line-height: 1.7;
-
-    letter-spacing: 1px;
-
+    inset: 0;
     pointer-events: none;
-
-    text-shadow:
-        0 1px 3px #000;
+    font-family: monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
 }
 
-
-.hud-top-left {
-
-    left: 18px;
+.top-left {
+    position: absolute;
     top: 18px;
+    left: 20px;
 }
 
+.title {
+    font-size: 25px;
+    font-weight: bold;
+    letter-spacing: 4px;
+}
 
-.hud-top-right {
+.mode {
+    margin-top: 5px;
+    opacity: 0.55;
+}
 
-    right: 18px;
+.top-right {
+    position: absolute;
     top: 18px;
-
+    right: 20px;
     text-align: right;
+    line-height: 1.8;
 }
 
-
-.hud-bottom-left {
-
-    left: 18px;
-    bottom: 18px;
+.center-info {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    opacity: 0.25;
 }
 
+.target-label {
+    font-size: 9px;
+    margin-bottom: 8px;
+}
 
-.hud-bottom-right {
+.crosshair {
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(255,255,255,0.35);
+    position: relative;
+}
 
-    right: 18px;
+.crosshair::before,
+.crosshair::after {
+    content: "";
+    position: absolute;
+    background: rgba(255,255,255,0.35);
+}
+
+.crosshair::before {
+    width: 1px;
+    height: 100%;
+    left: 50%;
+    top: 0;
+}
+
+.crosshair::after {
+    height: 1px;
+    width: 100%;
+    left: 0;
+    top: 50%;
+}
+
+.bottom-left {
+    position: absolute;
+    left: 20px;
     bottom: 18px;
+    line-height: 1.8;
+}
 
+.bottom-right {
+    position: absolute;
+    right: 20px;
+    bottom: 18px;
     text-align: right;
+    line-height: 1.8;
 }
-
-
-#trackingState {
-
-    margin-left: 8px;
-
-    color: #fff;
-}
-
-
-#gestureText {
-
-    color: #aaa;
-}
-
-
-/* =========================================================
-   CONTROLS
-========================================================= */
 
 .controls {
+    margin-top: 12px;
 
     display: flex;
-
     flex-wrap: wrap;
-
-    gap: 10px;
-
-    margin-top: 15px;
+    gap: 8px;
 }
 
-
 button {
+    background: #090909;
+    color: #fff;
 
-    min-height: 44px;
+    border: 1px solid rgba(255,255,255,0.3);
 
-    padding:
-        0 20px;
+    padding: 10px 14px;
 
-    border:
-        1px solid
-        #333;
-
-    border-radius: 6px;
-
-    background: #111;
-
-    color: #eee;
-
-    font-family:
-        "Courier New",
-        monospace;
-
-    font-size: 12px;
-
-    letter-spacing: 1px;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
 
     cursor: pointer;
 
     transition:
-        background 0.15s,
-        border-color 0.15s;
+        background 0.15s ease,
+        border-color 0.15s ease;
 }
 
-
-button:hover:not(:disabled) {
-
-    background: #1c1c1c;
-
-    border-color: #666;
+button:hover {
+    background: #151515;
+    border-color: rgba(255,255,255,0.7);
 }
 
-
-button:disabled {
-
-    opacity: 0.35;
-
-    cursor: not-allowed;
+button:active {
+    transform: translateY(1px);
 }
-
-
-button.active {
-
-    background: #eee;
-
-    color: #050505;
-
-    border-color: #eee;
-}
-
-
-/* =========================================================
-   INFO PANEL
-========================================================= */
 
 .info-panel {
+    margin-top: 12px;
 
     display: grid;
-
     grid-template-columns:
-        repeat(
-            4,
-            1fr
-        );
+        repeat(5, minmax(100px, 1fr));
 
-    gap: 1px;
-
-    margin-top: 15px;
-
-    background: #252525;
-
-    border:
-        1px solid
-        #252525;
-
-    border-radius: 7px;
-
-    overflow: hidden;
+    gap: 8px;
 }
 
+.info-panel > div {
+    border: 1px solid rgba(255,255,255,0.15);
+    background: #080808;
 
-.info-item {
-
-    min-height: 65px;
-
-    padding: 13px;
-
-    background: #0d0d0d;
+    padding: 10px;
 }
 
-
-.info-item span {
-
+.info-panel span {
     display: block;
-
-    margin-bottom: 8px;
-
-    color: #666;
-
+    font-family: monospace;
     font-size: 9px;
-
-    letter-spacing: 2px;
+    opacity: 0.5;
+    margin-bottom: 5px;
 }
 
-
-.info-item strong {
-
-    font-size: 14px;
-
-    font-weight: normal;
-
-    letter-spacing: 1px;
+.info-panel strong {
+    font-family: monospace;
+    font-size: 13px;
 }
 
+@media (max-width: 700px) {
 
-/* =========================================================
-   STATUS
-========================================================= */
-
-#status {
-
-    margin:
-        12px 0 0;
-
-    color: #555;
-
-    font-size: 11px;
-
-    letter-spacing: 1px;
-}
-
-
-/* =========================================================
-   MOBILE
-========================================================= */
-
-@media (
-    max-width: 650px
-) {
-
-    body {
-
-        padding:
-            15px 8px;
+    .app {
+        padding: 6px;
     }
 
-
-    h1 {
-
-        font-size: 25px;
-
-        letter-spacing: 6px;
+    .camera-wrapper {
+        aspect-ratio: 16 / 9;
     }
 
-
-    .topbar {
-
-        align-items:
-            center;
+    .title {
+        font-size: 17px;
+        letter-spacing: 3px;
     }
 
-
-    .system-status {
-
+    .hud {
         font-size: 9px;
     }
 
-
-    .hud {
-
-        font-size: 8px;
-    }
-
-
-    .hud-top-left,
-    .hud-bottom-left {
-
+    .top-left {
+        top: 10px;
         left: 10px;
     }
 
-
-    .hud-top-right,
-    .hud-bottom-right {
-
+    .top-right {
+        top: 10px;
         right: 10px;
     }
 
-
-    .hud-top-left,
-    .hud-top-right {
-
-        top: 10px;
-    }
-
-
-    .hud-bottom-left,
-    .hud-bottom-right {
-
+    .bottom-left {
+        left: 10px;
         bottom: 10px;
     }
 
+    .bottom-right {
+        right: 10px;
+        bottom: 10px;
+    }
 
     .controls {
-
-        flex-direction:
-            column;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
     }
-
 
     button {
-
         width: 100%;
+        padding: 12px 6px;
+        font-size: 9px;
     }
-
 
     .info-panel {
-
-        grid-template-columns:
-            repeat(
-                2,
-                1fr
-            );
+        grid-template-columns: repeat(2, 1fr);
     }
-
 }
