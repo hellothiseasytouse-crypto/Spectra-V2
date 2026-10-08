@@ -1,3 +1,8 @@
+// ============================================================
+// SPECTRA - COMPLETE script.js
+// Hand Geometry + Filters + Gesture + Sign + Face Privacy
+// ============================================================
+
 import {
     FilesetResolver,
     GestureRecognizer,
@@ -5,83 +10,9 @@ import {
     ObjectDetector
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304";
 
-// ============================================================
-// ELEMENTS
-// ============================================================
-
-function findElement(...ids) {
-    for (const id of ids) {
-        const el = document.getElementById(id);
-        if (el) return el;
-    }
-    return null;
-}
-
-const video = findElement("camera", "video");
-const canvas = findElement("overlay", "canvas");
-
-if (!video || !canvas) {
-    throw new Error("SPECTRA: Camera video or overlay canvas was not found.");
-}
-
-const ctx = canvas.getContext("2d");
-
-const startBtn = findElement("startBtn", "startCamera");
-const trackingBtn = findElement("trackingBtn", "handTrackingBtn");
-const targetBtn = findElement("targetBtn", "targetBoxBtn");
-const objectBtn = findElement("objectBtn", "objectDetectionBtn");
-const privacyBtn = findElement("privacyBtn", "facePrivacyBtn");
-const signBtn = findElement("signBtn", "signLanguageBtn");
-const filterBtn = findElement("filterBtn", "faceFilterBtn");
-const shapeBtn = findElement("shapeBtn", "shapesBtn");
 
 // ============================================================
-// STATUS UI
-// ============================================================
-
-function createStatusElement(id, text) {
-    let el = document.getElementById(id);
-
-    if (!el) {
-        el = document.createElement("button");
-        el.id = id;
-        el.type = "button";
-        el.className = "spectra-status";
-        el.textContent = text;
-
-        const controls =
-            document.querySelector(".controls") ||
-            document.querySelector("#controls") ||
-            document.body;
-
-        controls.appendChild(el);
-    }
-
-    return el;
-}
-
-const gestureDisplay = createStatusElement(
-    "gestureDisplay",
-    "GESTURE // WAITING"
-);
-
-const signDisplay = createStatusElement(
-    "signDisplay",
-    "SIGN // OFF"
-);
-
-const fpsBoostBtn = createStatusElement(
-    "fpsBoostBtn",
-    "FPS BOOST OFF"
-);
-
-const shapeDisplay = createStatusElement(
-    "shapeDisplay",
-    "GEOMETRY // READY"
-);
-
-// ============================================================
-// MEDIAPIPE URLS
+// MEDIAPIPE
 // ============================================================
 
 const WASM =
@@ -94,13 +25,98 @@ const FACE_MODEL =
     "https://storage.googleapis.com/mediapipe-models/face_detector/face_detector/float16/1/face_detector.task";
 
 const OBJECT_MODEL =
-    "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/object_detector.tflite";
+    "https://storage.googleapis.com/mediapipe-models/object_detector/object_detector/efficientdet_lite0/1/object_detector.tflite";
+
+
+// ============================================================
+// ELEMENT FINDER
+// ============================================================
+
+function findElement(...ids) {
+    for (const id of ids) {
+        const element = document.getElementById(id);
+        if (element) return element;
+    }
+
+    return null;
+}
+
+
+// ============================================================
+// ELEMENTS
+// ============================================================
+
+const video =
+    findElement("video", "camera", "videoElement");
+
+const canvas =
+    findElement("canvas", "output", "overlay", "canvasElement");
+
+if (!video || !canvas) {
+    throw new Error("SPECTRA: Camera video or canvas element not found.");
+}
+
+const ctx = canvas.getContext("2d");
+
+
+// Buttons
+const cameraBtn =
+    findElement("cameraBtn", "startCamera", "startBtn");
+
+const handBtn =
+    findElement("handBtn", "handsBtn", "handTrackingBtn");
+
+const targetBtn =
+    findElement("targetBtn", "targetBoxBtn");
+
+const objectBtn =
+    findElement("objectBtn", "objectsBtn", "objectDetectionBtn");
+
+const signBtn =
+    findElement("signBtn", "signLanguageBtn");
+
+const shapeBtn =
+    findElement("shapeBtn", "shapesBtn", "geometryBtn");
+
+const privacyBtn =
+    findElement("privacyBtn", "facePrivacyBtn");
+
+const faceFilterBtn =
+    findElement("faceFilterBtn");
+
+const fpsBoostBtn =
+    findElement("fpsBoostBtn", "performanceBtn");
+
+const resetBtn =
+    findElement("resetBtn");
+
+
+// Status displays
+const gestureDisplay =
+    findElement("gesture", "gestureDisplay", "gestureText");
+
+const signDisplay =
+    findElement("sign", "signDisplay", "signText");
+
+const fpsDisplay =
+    findElement("fps", "fpsDisplay");
+
+const targetDisplay =
+    findElement("target", "targetDisplay");
+
+const geometryDisplay =
+    findElement("geometry", "geometryDisplay");
+
+const filterDisplay =
+    findElement("filter", "filterDisplay");
+
 
 // ============================================================
 // STATE
 // ============================================================
 
 let cameraRunning = false;
+
 let handTracking = true;
 let targetVisible = true;
 let objectDetection = false;
@@ -110,28 +126,16 @@ let shapesEnabled = true;
 let privacyMode = "OFF";
 let faceFilter = "OFF";
 
-let gestureRecognizer = null;
-let faceDetector = null;
-let objectDetector = null;
-
-let visionFileset = null;
-
-let loadingVision = false;
-let loadingFace = false;
-let loadingObjects = false;
 
 // ============================================================
 // PERFORMANCE
 // IMPORTANT:
-// Do NOT call this variable "performance" because the browser
-// already has window.performance / performance.now().
+// DO NOT NAME THIS VARIABLE "performance"
+// because browser performance.now() would break.
 // ============================================================
 
 const isMobile =
-    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    window.innerWidth < 800;
-
-let fpsBoost = false;
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const PERFORMANCE_NORMAL = isMobile
     ? {
@@ -159,6 +163,20 @@ const PERFORMANCE_BOOST = isMobile
 
 let performanceConfig = PERFORMANCE_NORMAL;
 
+
+// ============================================================
+// MEDIAPIPE OBJECTS
+// ============================================================
+
+let vision = null;
+
+let gestureRecognizer = null;
+let faceDetector = null;
+let objectDetector = null;
+
+let modelsLoading = false;
+
+
 // ============================================================
 // DETECTION RESULTS
 // ============================================================
@@ -167,27 +185,10 @@ let handResults = null;
 let faceResults = null;
 let objectResults = null;
 
-let lastHandTime = 0;
-let lastFaceTime = 0;
-let lastObjectTime = 0;
-
-let detectingHands = false;
-let detectingFace = false;
-let detectingObjects = false;
-
-// ============================================================
-// FPS
-// ============================================================
-
-let frames = 0;
-let fps = 0;
-let fpsTimer = performance.now();
 
 // ============================================================
 // GEOMETRY
 // ============================================================
-
-let geometryMode = 0;
 
 const GEOMETRY_MODES = [
     "QUAD WARP",
@@ -196,68 +197,353 @@ const GEOMETRY_MODES = [
     "FRAME"
 ];
 
-let geometryFilter = 0;
-
 const GEOMETRY_FILTERS = [
     "NORMAL",
+    "BLUR",
+    "BRIGHTNESS",
+    "CONTRAST",
+    "GRAYSCALE",
+    "HUE-ROTATE",
     "INVERT",
-    "CYBER",
-    "BLUEPRINT",
-    "CONTRAST"
+    "OPACITY",
+    "SATURATE",
+    "SEPIA",
+    "DROP-SHADOW",
+    "URL"
 ];
 
-const GEOMETRY_SMOOTHING_SLOW = 0.38;
-const GEOMETRY_SMOOTHING_FAST = 0.72;
+let geometryModeIndex = 0;
+let geometryFilterIndex = 0;
+
+let geometryMode =
+    GEOMETRY_MODES[geometryModeIndex];
+
+let geometryFilter =
+    GEOMETRY_FILTERS[geometryFilterIndex];
+
+
+// ============================================================
+// GEOMETRY TRACKING
+// ============================================================
 
 const geometryPoints = new Map();
 
+let geometryVisible = false;
 let geometryLastSeen = 0;
-let lastGeometryDrawData = null;
 
-const GEOMETRY_HOLD_TIME = 180;
+const GEOMETRY_PERSISTENCE = 180;
+
+const geometryPointState = new Map();
+
 
 // ============================================================
 // DOUBLE PINCH
 // ============================================================
 
-let bothHandsPinching = false;
-let pinchSequenceCount = 0;
-let lastPinchSequence = 0;
-
 const DOUBLE_PINCH_WINDOW = 700;
+
+let firstPinchTime = 0;
+let previousBothPinching = false;
+
+
+// ============================================================
+// FPS
+// ============================================================
+
+let fpsTimer = performance.now();
+let frameCounter = 0;
+let currentFPS = 0;
+
+
+// ============================================================
+// TIMERS
+// ============================================================
+
+let lastHandDetection = 0;
+let lastFaceDetection = 0;
+let lastObjectDetection = 0;
+
+
+// ============================================================
+// OFFSCREEN CANVAS
+// Used for filtered geometry
+// ============================================================
+
+const geometryCanvas =
+    document.createElement("canvas");
+
+const geometryCtx =
+    geometryCanvas.getContext("2d");
+
+
+// ============================================================
+// SVG URL FILTER
+// ============================================================
+
+function createURLFilter() {
+
+    if (document.getElementById("spectraURLFilter")) {
+        return;
+    }
+
+    const svgNS = "http://www.w3.org/2000/svg";
+
+    const svg =
+        document.createElementNS(svgNS, "svg");
+
+    svg.id = "spectraURLFilter";
+
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    svg.style.position = "absolute";
+    svg.style.pointerEvents = "none";
+
+    const filter =
+        document.createElementNS(svgNS, "filter");
+
+    filter.setAttribute("id", "spectraGlow");
+
+    const blur =
+        document.createElementNS(svgNS, "feGaussianBlur");
+
+    blur.setAttribute("stdDeviation", "3");
+
+    const color =
+        document.createElementNS(svgNS, "feColorMatrix");
+
+    color.setAttribute(
+        "type",
+        "matrix"
+    );
+
+    color.setAttribute(
+        "values",
+        `
+        1 0 0 0 0
+        0 1 0 0 0
+        0 0 1 0 0
+        0 0 0 1 0
+        `
+    );
+
+    const merge =
+        document.createElementNS(svgNS, "feMerge");
+
+    const glow =
+        document.createElementNS(svgNS, "feMergeNode");
+
+    glow.setAttribute(
+        "in",
+        "SourceGraphic"
+    );
+
+    const blurNode =
+        document.createElementNS(svgNS, "feMergeNode");
+
+    blurNode.setAttribute(
+        "in",
+        "blur"
+    );
+
+    merge.appendChild(blurNode);
+    merge.appendChild(glow);
+
+    filter.appendChild(blur);
+    filter.appendChild(color);
+    filter.appendChild(merge);
+
+    svg.appendChild(filter);
+
+    document.body.appendChild(svg);
+}
+
+createURLFilter();
+
+
+// ============================================================
+// LOAD MEDIAPIPE
+// ============================================================
+
+async function loadVision() {
+
+    if (vision) return vision;
+
+    if (modelsLoading) {
+        while (modelsLoading) {
+            await new Promise(resolve =>
+                setTimeout(resolve, 50)
+            );
+        }
+
+        return vision;
+    }
+
+    modelsLoading = true;
+
+    try {
+
+        vision =
+            await FilesetResolver.forVisionTasks(WASM);
+
+        await loadGestureRecognizer();
+        await loadFaceDetector();
+        await loadObjectDetector();
+
+        return vision;
+
+    } catch (error) {
+
+        console.error(
+            "SPECTRA MediaPipe loading error:",
+            error
+        );
+
+        throw error;
+
+    } finally {
+
+        modelsLoading = false;
+    }
+}
+
+
+// ============================================================
+// GESTURE MODEL
+// ============================================================
+
+async function loadGestureRecognizer() {
+
+    if (gestureRecognizer) return;
+
+    try {
+
+        gestureRecognizer =
+            await GestureRecognizer.createFromOptions(
+                vision,
+                {
+                    baseOptions: {
+                        modelAssetPath: GESTURE_MODEL,
+                        delegate: "GPU"
+                    },
+
+                    runningMode: "VIDEO",
+
+                    numHands: 2
+                }
+            );
+
+    } catch (error) {
+
+        console.warn(
+            "Gesture recognizer failed:",
+            error
+        );
+
+        gestureRecognizer = null;
+    }
+}
+
+
+// ============================================================
+// FACE MODEL
+// ============================================================
+
+async function loadFaceDetector() {
+
+    if (faceDetector) return;
+
+    try {
+
+        faceDetector =
+            await FaceDetector.createFromOptions(
+                vision,
+                {
+                    baseOptions: {
+                        modelAssetPath: FACE_MODEL,
+                        delegate: "GPU"
+                    },
+
+                    runningMode: "VIDEO",
+
+                    minDetectionConfidence: 0.35
+                }
+            );
+
+    } catch (error) {
+
+        console.warn(
+            "Face detector failed:",
+            error
+        );
+
+        faceDetector = null;
+    }
+}
+
+
+// ============================================================
+// OBJECT MODEL
+// ============================================================
+
+async function loadObjectDetector() {
+
+    if (objectDetector) return;
+
+    try {
+
+        objectDetector =
+            await ObjectDetector.createFromOptions(
+                vision,
+                {
+                    baseOptions: {
+                        modelAssetPath: OBJECT_MODEL,
+                        delegate: "GPU"
+                    },
+
+                    runningMode: "VIDEO",
+
+                    scoreThreshold: 0.35,
+
+                    maxResults: 8
+                }
+            );
+
+    } catch (error) {
+
+        console.warn(
+            "Object detector failed:",
+            error
+        );
+
+        objectDetector = null;
+    }
+}
+
 
 // ============================================================
 // CAMERA
 // ============================================================
 
 async function startCamera() {
+
     if (cameraRunning) return;
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.error("SPECTRA: getUserMedia is not supported.");
-        setButtonText(startBtn, "CAMERA UNSUPPORTED");
-        return;
-    }
-
     try {
-        setButtonText(startBtn, "STARTING...");
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: "user",
-                width: {
-                    ideal: 1280
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: "user",
+                    width: {
+                        ideal: 1280
+                    },
+                    height: {
+                        ideal: 720
+                    }
                 },
-                height: {
-                    ideal: 720
-                },
-                frameRate: {
-                    ideal: 30,
-                    max: 60
-                }
-            },
-            audio: false
-        });
+
+                audio: false
+            });
 
         video.srcObject = stream;
 
@@ -265,421 +551,100 @@ async function startCamera() {
 
         cameraRunning = true;
 
-        setButtonText(startBtn, "CAMERA ON");
+        if (cameraBtn) {
+            cameraBtn.textContent = "STOP CAMERA";
+        }
 
         resizeCanvas();
 
-        if (!visionFileset) {
-            await loadVision();
-        }
+        loadVision().catch(error => {
+            console.error(
+                "SPECTRA model loading failed:",
+                error
+            );
+        });
 
         requestAnimationFrame(renderLoop);
+
     } catch (error) {
-        console.error("SPECTRA camera error:", error);
+
+        console.error(
+            "Camera could not start:",
+            error
+        );
 
         cameraRunning = false;
 
-        setButtonText(
-            startBtn,
-            "START CAMERA"
-        );
+        if (cameraBtn) {
+            cameraBtn.textContent = "START CAMERA";
+        }
     }
 }
 
-async function stopCamera() {
+
+function stopCamera() {
+
     cameraRunning = false;
 
     if (video.srcObject) {
-        for (const track of video.srcObject.getTracks()) {
-            track.stop();
-        }
+
+        const tracks =
+            video.srcObject.getTracks();
+
+        tracks.forEach(track =>
+            track.stop()
+        );
 
         video.srcObject = null;
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    setButtonText(startBtn, "START CAMERA");
-}
-
-// ============================================================
-// LOAD VISION
-// ============================================================
-
-async function loadVision() {
-    if (visionFileset) return visionFileset;
-    if (loadingVision) return null;
-
-    loadingVision = true;
-
-    try {
-        visionFileset = await FilesetResolver.forVisionTasks(WASM);
-
-        gestureRecognizer =
-            await GestureRecognizer.createFromOptions(
-                visionFileset,
-                {
-                    baseOptions: {
-                        modelAssetPath: GESTURE_MODEL,
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    numHands: 2,
-                    minHandDetectionConfidence: 0.4,
-                    minHandPresenceConfidence: 0.4,
-                    minTrackingConfidence: 0.4
-                }
-            );
-
-        return visionFileset;
-    } catch (error) {
-        console.error("SPECTRA vision loading error:", error);
-
-        gestureRecognizer = null;
-        visionFileset = null;
-
-        return null;
-    } finally {
-        loadingVision = false;
+    if (cameraBtn) {
+        cameraBtn.textContent = "START CAMERA";
     }
 }
 
-async function loadFaceDetector() {
-    if (faceDetector) return faceDetector;
-    if (loadingFace) return null;
-
-    loadingFace = true;
-
-    try {
-        if (!visionFileset) {
-            await loadVision();
-        }
-
-        if (!visionFileset) return null;
-
-        faceDetector =
-            await FaceDetector.createFromOptions(
-                visionFileset,
-                {
-                    baseOptions: {
-                        modelAssetPath: FACE_MODEL,
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    minDetectionConfidence: 0.4
-                }
-            );
-
-        return faceDetector;
-    } catch (error) {
-        console.error("SPECTRA face detector error:", error);
-
-        faceDetector = null;
-
-        return null;
-    } finally {
-        loadingFace = false;
-    }
-}
-
-async function loadObjectDetector() {
-    if (objectDetector) return objectDetector;
-    if (loadingObjects) return null;
-
-    loadingObjects = true;
-
-    try {
-        if (!visionFileset) {
-            await loadVision();
-        }
-
-        if (!visionFileset) return null;
-
-        objectDetector =
-            await ObjectDetector.createFromOptions(
-                visionFileset,
-                {
-                    baseOptions: {
-                        modelAssetPath: OBJECT_MODEL,
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    scoreThreshold: 0.35,
-                    maxResults: 5
-                }
-            );
-
-        return objectDetector;
-    } catch (error) {
-        console.error("SPECTRA object detector error:", error);
-
-        objectDetector = null;
-
-        return null;
-    } finally {
-        loadingObjects = false;
-    }
-}
 
 // ============================================================
-// BUTTON HELPERS
-// ============================================================
-
-function setButtonText(button, text) {
-    if (button) {
-        button.textContent = text;
-    }
-}
-
-// ============================================================
-// BUTTONS
-// ============================================================
-
-if (startBtn) {
-    startBtn.addEventListener("click", async () => {
-        if (cameraRunning) {
-            await stopCamera();
-        } else {
-            await startCamera();
-        }
-    });
-}
-
-if (trackingBtn) {
-    trackingBtn.addEventListener("click", async () => {
-        handTracking = !handTracking;
-
-        setButtonText(
-            trackingBtn,
-            handTracking
-                ? "HAND TRACKING ON"
-                : "HAND TRACKING OFF"
-        );
-
-        if (handTracking && !gestureRecognizer) {
-            await loadVision();
-        }
-
-        if (!handTracking) {
-            gestureDisplay.textContent = "GESTURE // OFF";
-            signDisplay.textContent = signLanguage
-                ? "SIGN // WAITING"
-                : "SIGN // OFF";
-            shapeDisplay.textContent = "GEOMETRY // OFF";
-        }
-    });
-}
-
-if (targetBtn) {
-    targetBtn.addEventListener("click", () => {
-        targetVisible = !targetVisible;
-
-        setButtonText(
-            targetBtn,
-            targetVisible
-                ? "TARGET BOX ON"
-                : "TARGET BOX OFF"
-        );
-    });
-}
-
-if (objectBtn) {
-    objectBtn.addEventListener("click", async () => {
-        objectDetection = !objectDetection;
-
-        setButtonText(
-            objectBtn,
-            objectDetection
-                ? "OBJECT DETECTION ON"
-                : "OBJECT DETECTION OFF"
-        );
-
-        if (objectDetection) {
-            const detector = await loadObjectDetector();
-
-            if (!detector) {
-                objectDetection = false;
-
-                setButtonText(
-                    objectBtn,
-                    "OBJECT DETECTION OFF"
-                );
-            }
-        }
-    });
-}
-
-if (privacyBtn) {
-    privacyBtn.addEventListener("click", async () => {
-        if (privacyMode === "OFF") {
-            privacyMode = "PIXEL";
-
-            setButtonText(
-                privacyBtn,
-                "FACE PRIVACY ON"
-            );
-
-            const detector = await loadFaceDetector();
-
-            if (!detector) {
-                privacyMode = "OFF";
-
-                setButtonText(
-                    privacyBtn,
-                    "FACE PRIVACY OFF"
-                );
-            }
-        } else {
-            privacyMode = "OFF";
-
-            setButtonText(
-                privacyBtn,
-                "FACE PRIVACY OFF"
-            );
-        }
-    });
-}
-
-if (signBtn) {
-    signBtn.addEventListener("click", async () => {
-        signLanguage = !signLanguage;
-
-        setButtonText(
-            signBtn,
-            signLanguage
-                ? "SIGN LANGUAGE ON"
-                : "SIGN LANGUAGE OFF"
-        );
-
-        if (signLanguage && !gestureRecognizer) {
-            await loadVision();
-        }
-
-        updateSignLanguage();
-    });
-}
-
-if (filterBtn) {
-    filterBtn.addEventListener("click", async () => {
-        if (faceFilter === "OFF") {
-            faceFilter = "CYBER";
-        } else if (faceFilter === "CYBER") {
-            faceFilter = "SCAN";
-        } else if (faceFilter === "SCAN") {
-            faceFilter = "CROWN";
-        } else {
-            faceFilter = "OFF";
-        }
-
-        setButtonText(
-            filterBtn,
-            faceFilter === "OFF"
-                ? "FACE FILTER OFF"
-                : `FACE FILTER ${faceFilter}`
-        );
-
-        if (faceFilter !== "OFF") {
-            const detector = await loadFaceDetector();
-
-            if (!detector) {
-                faceFilter = "OFF";
-
-                setButtonText(
-                    filterBtn,
-                    "FACE FILTER OFF"
-                );
-            }
-        }
-    });
-}
-
-if (shapeBtn) {
-    shapeBtn.addEventListener("click", () => {
-        geometryMode =
-            (geometryMode + 1) %
-            GEOMETRY_MODES.length;
-
-        shapesEnabled = true;
-
-        shapeDisplay.textContent =
-            `GEOMETRY // ${GEOMETRY_MODES[geometryMode]}`;
-    });
-}
-
-if (fpsBoostBtn) {
-    fpsBoostBtn.addEventListener("click", () => {
-        fpsBoost = !fpsBoost;
-
-        performanceConfig = fpsBoost
-            ? PERFORMANCE_BOOST
-            : PERFORMANCE_NORMAL;
-
-        setButtonText(
-            fpsBoostBtn,
-            fpsBoost
-                ? "FPS BOOST ON"
-                : "FPS BOOST OFF"
-        );
-    });
-}
-
-// ============================================================
-// MAIN LOOP
-// ============================================================
-
-async function renderLoop(timestamp) {
-    if (!cameraRunning) return;
-
-    resizeCanvas();
-
-    drawCamera();
-
-    if (handTracking) {
-        await runHands(timestamp);
-    }
-
-    if (
-        privacyMode !== "OFF" ||
-        faceFilter !== "OFF"
-    ) {
-        await runFace(timestamp);
-    }
-
-    if (objectDetection) {
-        await runObjects(timestamp);
-    }
-
-    drawFacePrivacy();
-    drawFaceFilter();
-    drawObjects();
-
-    if (handTracking) {
-        drawHandVFX(timestamp);
-        drawHands();
-    }
-
-    updateFPS();
-
-    requestAnimationFrame(renderLoop);
-}
-
-// ============================================================
-// CAMERA DRAW
+// CANVAS SIZE
 // ============================================================
 
 function resizeCanvas() {
-    if (!video.videoWidth || !video.videoHeight) return;
+
+    const width =
+        video.videoWidth ||
+        window.innerWidth;
+
+    const height =
+        video.videoHeight ||
+        window.innerHeight;
 
     if (
-        canvas.width !== video.videoWidth ||
-        canvas.height !== video.videoHeight
+        canvas.width !== width ||
+        canvas.height !== height
     ) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        geometryCanvas.width = width;
+        geometryCanvas.height = height;
     }
 }
 
-function drawCamera() {
+window.addEventListener(
+    "resize",
+    resizeCanvas
+);
+
+
+// ============================================================
+// VIDEO DRAW
+// ============================================================
+
+function drawVideo() {
+
+    ctx.save();
+
     ctx.clearRect(
         0,
         0,
@@ -687,10 +652,15 @@ function drawCamera() {
         canvas.height
     );
 
-    ctx.save();
+    ctx.translate(
+        canvas.width,
+        0
+    );
 
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
+    ctx.scale(
+        -1,
+        1
+    );
 
     ctx.drawImage(
         video,
@@ -703,959 +673,621 @@ function drawCamera() {
     ctx.restore();
 }
 
+
 // ============================================================
-// HAND DETECTION
+// LANDMARK -> CANVAS
 // ============================================================
 
-async function runHands(timestamp) {
-    if (!gestureRecognizer) {
-        if (!loadingVision) {
-            await loadVision();
-        }
+function landmarkToCanvas(landmark) {
 
-        return;
-    }
+    if (!landmark) return null;
 
-    if (
-        timestamp - lastHandTime <
-        performanceConfig.hands
-    ) {
-        return;
-    }
+    return {
+        x: landmark.x * canvas.width,
+        y: landmark.y * canvas.height
+    };
+}
 
-    if (detectingHands) return;
 
-    detectingHands = true;
-    lastHandTime = timestamp;
+// ============================================================
+// SMOOTH TRACKED POINT
+// ============================================================
 
-    try {
-        const result =
-            gestureRecognizer.recognizeForVideo(
-                video,
-                timestamp
-            );
+function trackedPoint(
+    key,
+    point
+) {
 
-        handResults = result;
+    if (!point) return null;
 
-        updateGesture();
-        updateSignLanguage();
+    let state =
+        geometryPointState.get(key);
 
-        if (result?.landmarks?.length) {
-            checkDoublePinch(
-                result.landmarks,
-                timestamp
-            );
-        } else {
-            checkDoublePinch([], timestamp);
-        }
-    } catch (error) {
-        console.error(
-            "SPECTRA hand detection error:",
-            error
+    if (!state) {
+
+        state = {
+            x: point.x,
+            y: point.y,
+            vx: 0,
+            vy: 0
+        };
+
+        geometryPointState.set(
+            key,
+            state
         );
-    } finally {
-        detectingHands = false;
-    }
-}
 
-// ============================================================
-// FACE DETECTION
-// ============================================================
-
-async function runFace(timestamp) {
-    if (!faceDetector) {
-        if (!loadingFace) {
-            await loadFaceDetector();
-        }
-
-        return;
+        return {
+            x: point.x,
+            y: point.y
+        };
     }
 
-    if (
-        timestamp - lastFaceTime <
-        performanceConfig.face
-    ) {
-        return;
-    }
+    const dx =
+        point.x - state.x;
 
-    if (detectingFace) return;
+    const dy =
+        point.y - state.y;
 
-    detectingFace = true;
-    lastFaceTime = timestamp;
-
-    try {
-        faceResults =
-            faceDetector.detectForVideo(
-                video,
-                timestamp
-            );
-    } catch (error) {
-        console.error(
-            "SPECTRA face detection error:",
-            error
+    const speed =
+        Math.sqrt(
+            dx * dx +
+            dy * dy
         );
-    } finally {
-        detectingFace = false;
-    }
-}
 
-// ============================================================
-// OBJECT DETECTION
-// ============================================================
-
-async function runObjects(timestamp) {
-    if (!objectDetector) {
-        if (!loadingObjects) {
-            await loadObjectDetector();
-        }
-
-        return;
-    }
-
-    if (
-        timestamp - lastObjectTime <
-        performanceConfig.objects
-    ) {
-        return;
-    }
-
-    if (detectingObjects) return;
-
-    detectingObjects = true;
-    lastObjectTime = timestamp;
-
-    try {
-        objectResults =
-            objectDetector.detectForVideo(
-                video,
-                timestamp
-            );
-    } catch (error) {
-        console.error(
-            "SPECTRA object detection error:",
-            error
+    const normalizedSpeed =
+        Math.min(
+            speed / 100,
+            1
         );
-    } finally {
-        detectingObjects = false;
-    }
+
+    const alpha =
+        0.42 +
+        normalizedSpeed * 0.34;
+
+    state.vx =
+        state.vx * 0.55 +
+        dx * 0.45;
+
+    state.vy =
+        state.vy * 0.55 +
+        dy * 0.45;
+
+    const prediction =
+        0.018 +
+        normalizedSpeed * 0.025;
+
+    const targetX =
+        point.x +
+        state.vx * prediction;
+
+    const targetY =
+        point.y +
+        state.vy * prediction;
+
+    state.x +=
+        (targetX - state.x) *
+        alpha;
+
+    state.y +=
+        (targetY - state.y) *
+        alpha;
+
+    state.x =
+        Math.max(
+            0,
+            Math.min(
+                canvas.width,
+                state.x
+            )
+        );
+
+    state.y =
+        Math.max(
+            0,
+            Math.min(
+                canvas.height,
+                state.y
+            )
+        );
+
+    return {
+        x: state.x,
+        y: state.y
+    };
 }
+
 
 // ============================================================
-// GESTURE DISPLAY
+// DISTANCE
 // ============================================================
 
-function updateGesture() {
-    if (!handTracking) {
-        gestureDisplay.textContent =
-            "GESTURE // OFF";
-        return;
-    }
+function distance(a, b) {
 
-    if (
-        !handResults ||
-        !handResults.gestures ||
-        !handResults.gestures.length
-    ) {
-        gestureDisplay.textContent =
-            "GESTURE // NONE";
-        return;
-    }
+    if (!a || !b) return 0;
 
-    const names = [];
+    const dx =
+        a.x - b.x;
 
-    for (const gestureList of handResults.gestures) {
-        if (!gestureList?.length) continue;
+    const dy =
+        a.y - b.y;
 
-        const gesture = gestureList[0];
-
-        if (gesture?.categoryName) {
-            names.push(
-                formatGestureName(
-                    gesture.categoryName
-                )
-            );
-        }
-    }
-
-    gestureDisplay.textContent =
-        names.length
-            ? `GESTURE // ${names.join(" + ")}`
-            : "GESTURE // NONE";
+    return Math.sqrt(
+        dx * dx +
+        dy * dy
+    );
 }
 
-function formatGestureName(name) {
-    if (!name) return "UNKNOWN";
-
-    return String(name)
-        .replace(/_/g, " ")
-        .toUpperCase();
-}
 
 // ============================================================
-// SIGN LANGUAGE
+// MIDPOINT
 // ============================================================
 
-function updateSignLanguage() {
-    if (!signLanguage) {
-        signDisplay.textContent =
-            "SIGN // OFF";
-        return;
-    }
+function midpoint(a, b) {
 
-    if (
-        !handResults ||
-        !handResults.landmarks ||
-        !handResults.landmarks.length
-    ) {
-        signDisplay.textContent =
-            "SIGN // WAITING";
-        return;
-    }
-
-    const signs = [];
-
-    for (const hand of handResults.landmarks) {
-        signs.push(getSign(hand));
-    }
-
-    signDisplay.textContent =
-        `SIGN // ${signs.join(" + ")}`;
+    return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2
+    };
 }
 
-function getSign(hand) {
-    if (!hand || hand.length < 21) {
-        return "UNKNOWN";
+
+// ============================================================
+// HAND PINCH
+// ============================================================
+
+function isPinching(hand) {
+
+    if (!hand || hand.length < 9) {
+        return false;
     }
 
-    const thumb = fingerUp(
-        hand,
-        4,
-        3
-    );
+    const thumb =
+        hand[4];
 
-    const index = fingerUp(
-        hand,
-        8,
-        6
-    );
+    const index =
+        hand[8];
 
-    const middle = fingerUp(
-        hand,
-        12,
-        10
-    );
-
-    const ring = fingerUp(
-        hand,
-        16,
-        14
-    );
-
-    const pinky = fingerUp(
-        hand,
-        20,
-        18
-    );
-
-    if (
-        index &&
-        middle &&
-        !ring &&
-        !pinky
-    ) {
-        return "V";
-    }
-
-    if (
-        index &&
-        !middle &&
-        !ring &&
-        !pinky
-    ) {
-        return "POINT";
-    }
-
-    if (
-        pinky &&
-        !index &&
-        !middle &&
-        !ring
-    ) {
-        return "I";
-    }
-
-    if (
-        thumb &&
-        index &&
-        middle &&
-        ring &&
-        pinky
-    ) {
-        return "OPEN";
-    }
-
-    if (
-        !thumb &&
-        !index &&
-        !middle &&
-        !ring &&
-        !pinky
-    ) {
-        return "FIST";
-    }
-
-    if (
-        thumb &&
-        !index &&
-        !middle &&
-        !ring &&
-        !pinky
-    ) {
-        return "THUMBS UP";
-    }
-
-    return "UNKNOWN";
+    return distance(
+        thumb,
+        index
+    ) < 0.085;
 }
 
-function fingerUp(hand, tipIndex, pipIndex) {
-    return hand[tipIndex].y < hand[pipIndex].y;
-}
 
 // ============================================================
 // DOUBLE PINCH
 // ============================================================
 
-function isPinchingFast(hand) {
-    if (!hand || hand.length < 21) {
-        return false;
-    }
-
-    const thumb = hand[4];
-    const index = hand[8];
-
-    const distanceValue = Math.hypot(
-        thumb.x - index.x,
-        thumb.y - index.y
-    );
-
-    return distanceValue < 0.085;
-}
-
-function checkDoublePinch(hands, timestamp) {
-    if (timestamp - lastPinchSequence > DOUBLE_PINCH_WINDOW) {
-        pinchSequenceCount = 0;
-    }
+function checkDoublePinch(hands) {
 
     if (!hands || hands.length < 2) {
-        bothHandsPinching = false;
-        return;
-    }
 
-    const first = isPinchingFast(hands[0]);
-    const second = isPinchingFast(hands[1]);
-
-    const both = first && second;
-
-    if (both && !bothHandsPinching) {
         if (
-            timestamp - lastPinchSequence <=
+            firstPinchTime &&
+            performance.now() -
+            firstPinchTime >
             DOUBLE_PINCH_WINDOW
         ) {
-            pinchSequenceCount++;
-        } else {
-            pinchSequenceCount = 1;
+            firstPinchTime = 0;
         }
 
-        lastPinchSequence = timestamp;
-
-        if (pinchSequenceCount >= 2) {
-            cycleGeometryFilter();
-
-            pinchSequenceCount = 0;
-            lastPinchSequence = 0;
-        }
-    }
-
-    bothHandsPinching = both;
-}
-
-function cycleGeometryFilter() {
-    geometryFilter =
-        (geometryFilter + 1) %
-        GEOMETRY_FILTERS.length;
-
-    shapeDisplay.textContent =
-        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`;
-}
-
-// ============================================================
-// GEOMETRY MAIN
-// ============================================================
-
-function drawHandVFX(timestamp) {
-    if (!shapesEnabled) return;
-
-    const hands =
-        handResults?.landmarks || [];
-
-    if (hands.length >= 2) {
-        drawTwoHandGeometry(
-            hands[0],
-            hands[1],
-            timestamp
-        );
-
-        geometryLastSeen = timestamp;
+        previousBothPinching = false;
 
         return;
     }
 
-    if (hands.length === 1) {
-        drawLandmarkGeometry(
-            hands[0],
-            timestamp
-        );
-
-        geometryLastSeen = timestamp;
-
-        return;
-    }
+    const bothPinching =
+        isPinching(hands[0]) &&
+        isPinching(hands[1]);
 
     if (
-        lastGeometryDrawData &&
-        timestamp - geometryLastSeen <
-        GEOMETRY_HOLD_TIME
+        bothPinching &&
+        !previousBothPinching
     ) {
-        const fade =
-            1 -
-            (
-                timestamp -
-                geometryLastSeen
-            ) /
-            GEOMETRY_HOLD_TIME;
 
-        ctx.save();
+        const now =
+            performance.now();
 
-        ctx.globalAlpha =
-            Math.max(
-                0,
-                Math.min(1, fade)
-            );
+        if (
+            firstPinchTime &&
+            now - firstPinchTime <=
+            DOUBLE_PINCH_WINDOW
+        ) {
 
-        drawStoredGeometry(
-            lastGeometryDrawData,
-            timestamp
-        );
+            cycleGeometryFilter();
 
-        ctx.restore();
+            firstPinchTime = 0;
 
-        shapeDisplay.textContent =
-            `GEOMETRY // HOLD`;
+        } else {
 
-        return;
+            firstPinchTime = now;
+        }
     }
 
-    shapeDisplay.textContent =
-        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`;
+    previousBothPinching =
+        bothPinching;
 }
 
+
 // ============================================================
-// TWO HAND GEOMETRY
+// CYCLE GEOMETRY FILTER
 // ============================================================
 
-function drawTwoHandGeometry(
-    handA,
-    handB,
-    timestamp
-) {
-    const centerA = getPalmCenter(handA);
-    const centerB = getPalmCenter(handB);
+function cycleGeometryFilter() {
 
-    let leftHand = handA;
-    let rightHand = handB;
+    geometryFilterIndex++;
 
-    if (centerA.x > centerB.x) {
-        leftHand = handB;
-        rightHand = handA;
+    if (
+        geometryFilterIndex >=
+        GEOMETRY_FILTERS.length
+    ) {
+        geometryFilterIndex = 0;
     }
 
-    const leftIndex = trackedPoint(
-        "leftIndex",
-        point(leftHand[8]),
-        timestamp
+    geometryFilter =
+        GEOMETRY_FILTERS[
+            geometryFilterIndex
+        ];
+
+    if (filterDisplay) {
+        filterDisplay.textContent =
+            `FILTER // ${geometryFilter}`;
+    }
+
+    console.log(
+        "SPECTRA Geometry Filter:",
+        geometryFilter
     );
-
-    const leftThumb = trackedPoint(
-        "leftThumb",
-        point(leftHand[4]),
-        timestamp
-    );
-
-    const rightIndex = trackedPoint(
-        "rightIndex",
-        point(rightHand[8]),
-        timestamp
-    );
-
-    const rightThumb = trackedPoint(
-        "rightThumb",
-        point(rightHand[4]),
-        timestamp
-    );
-
-    const leftTop =
-        leftIndex.y < leftThumb.y
-            ? leftIndex
-            : leftThumb;
-
-    const leftBottom =
-        leftIndex.y < leftThumb.y
-            ? leftThumb
-            : leftIndex;
-
-    const rightTop =
-        rightIndex.y < rightThumb.y
-            ? rightIndex
-            : rightThumb;
-
-    const rightBottom =
-        rightIndex.y < rightThumb.y
-            ? rightThumb
-            : rightIndex;
-
-    const corners = {
-        tl: leftTop,
-        tr: rightTop,
-        br: rightBottom,
-        bl: leftBottom
-    };
-
-    const quad = [
-        corners.tl,
-        corners.tr,
-        corners.br,
-        corners.bl
-    ];
-
-    lastGeometryDrawData = {
-        type: "quad",
-        points: quad.map(clonePoint)
-    };
-
-    drawQuadSurface(
-        quad,
-        timestamp
-    );
-
-    drawGeometryAnchors(
-        quad
-    );
-
-    drawQuadGrid(
-        quad
-    );
-
-    drawPolygonMeasurements(
-        quad,
-        "QUAD"
-    );
-
-    shapeDisplay.textContent =
-        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`;
 }
 
+
 // ============================================================
-// ONE HAND GEOMETRY
+// GET HAND GEOMETRY POINTS
+//
+// THIS IS THE IMPORTANT PART.
+//
+// The geometry is now directly attached to:
+// thumb tip = 4
+// index tip = 8
+// middle tip = 12
+// ring tip = 16
+//
+// No floating arbitrary points.
 // ============================================================
 
-function drawLandmarkGeometry(
-    hand,
-    timestamp
-) {
-    const wrist = trackedPoint(
-        "wrist",
-        point(hand[0]),
-        timestamp
-    );
+function getHandGeometry(hands) {
 
-    const thumb = trackedPoint(
-        "thumb",
-        point(hand[4]),
-        timestamp
-    );
+    if (!hands || hands.length === 0) {
+        return null;
+    }
 
-    const index = trackedPoint(
-        "index",
-        point(hand[8]),
-        timestamp
-    );
 
-    const middle = trackedPoint(
-        "middle",
-        point(hand[12]),
-        timestamp
-    );
+    // --------------------------------------------------------
+    // TWO HANDS
+    //
+    // Shape connects directly to the thumb/index fingertips
+    // of both hands.
+    // --------------------------------------------------------
 
-    const ring = trackedPoint(
-        "ring",
-        point(hand[16]),
-        timestamp
-    );
+    if (hands.length >= 2) {
 
-    const pinky = trackedPoint(
-        "pinky",
-        point(hand[20]),
-        timestamp
-    );
+        const handA = hands[0];
+        const handB = hands[1];
 
-    const pinch =
-        distance(
-            thumb,
+        const aThumb =
+            landmarkToCanvas(handA[4]);
+
+        const aIndex =
+            landmarkToCanvas(handA[8]);
+
+        const bThumb =
+            landmarkToCanvas(handB[4]);
+
+        const bIndex =
+            landmarkToCanvas(handB[8]);
+
+        if (
+            !aThumb ||
+            !aIndex ||
+            !bThumb ||
+            !bIndex
+        ) {
+            return null;
+        }
+
+        const points = [
+            trackedPoint(
+                "A_INDEX",
+                aIndex
+            ),
+
+            trackedPoint(
+                "B_INDEX",
+                bIndex
+            ),
+
+            trackedPoint(
+                "B_THUMB",
+                bThumb
+            ),
+
+            trackedPoint(
+                "A_THUMB",
+                aThumb
+            )
+        ];
+
+        return points;
+    }
+
+
+    // --------------------------------------------------------
+    // ONE HAND
+    //
+    // Shape is literally built from the hand's fingertips.
+    //
+    // index
+    // middle
+    // ring
+    // thumb
+    // --------------------------------------------------------
+
+    const hand =
+        hands[0];
+
+    const index =
+        landmarkToCanvas(hand[8]);
+
+    const middle =
+        landmarkToCanvas(hand[12]);
+
+    const ring =
+        landmarkToCanvas(hand[16]);
+
+    const thumb =
+        landmarkToCanvas(hand[4]);
+
+    if (
+        !index ||
+        !middle ||
+        !ring ||
+        !thumb
+    ) {
+        return null;
+    }
+
+    return [
+        trackedPoint(
+            "ONE_INDEX",
             index
-        );
+        ),
 
-    if (geometryMode === 0) {
-        drawQuadWarp(
-            wrist,
-            thumb,
-            index,
-            pinky,
-            pinch,
-            timestamp
-        );
-    } else if (geometryMode === 1) {
-        drawLandmarkDiamond(
-            thumb,
-            index,
-            middle,
-            ring,
-            timestamp
-        );
-    } else if (geometryMode === 2) {
-        drawLandmarkShard(
-            wrist,
-            thumb,
-            index,
-            middle,
-            ring,
-            pinky,
-            timestamp
-        );
-    } else {
-        drawLandmarkFrame(
-            wrist,
-            thumb,
-            index,
-            middle,
-            ring,
-            pinky,
-            timestamp
-        );
+        trackedPoint(
+            "ONE_MIDDLE",
+            middle
+        ),
+
+        trackedPoint(
+            "ONE_RING",
+            ring
+        ),
+
+        trackedPoint(
+            "ONE_THUMB",
+            thumb
+        )
+    ];
+}
+
+
+// ============================================================
+// GEOMETRY CENTROID
+// ============================================================
+
+function averagePoint(points) {
+
+    let x = 0;
+    let y = 0;
+
+    for (const point of points) {
+        x += point.x;
+        y += point.y;
     }
 
-    shapeDisplay.textContent =
-        `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`;
-}
-
-// ============================================================
-// QUAD WARP
-// ============================================================
-
-function drawQuadWarp(
-    wrist,
-    thumb,
-    index,
-    pinky,
-    pinch,
-    timestamp
-) {
-    const rawPoints = [
-        wrist,
-        thumb,
-        index,
-        pinky
-    ];
-
-    const quad = orderAroundCenter(
-        rawPoints
-    );
-
-    lastGeometryDrawData = {
-        type: "polygon",
-        points: quad.map(clonePoint)
+    return {
+        x: x / points.length,
+        y: y / points.length
     };
-
-    drawPolygonSurface(
-        quad,
-        timestamp
-    );
-
-    drawQuadGrid(
-        quad
-    );
-
-    drawGeometryAnchors(
-        quad
-    );
-
-    drawPolygonMeasurements(
-        quad,
-        "HAND"
-    );
 }
 
+
 // ============================================================
-// DIAMOND
+// DRAW POLYGON PATH
 // ============================================================
 
-function drawLandmarkDiamond(
-    thumb,
-    index,
-    middle,
-    ring,
-    timestamp
+function createPolygonPath(
+    targetCtx,
+    points
 ) {
-    const raw = [
-        index,
-        middle,
-        ring,
-        thumb
-    ];
 
-    const diamond =
-        orderAroundCenter(raw);
+    targetCtx.beginPath();
 
-    lastGeometryDrawData = {
-        type: "polygon",
-        points: diamond.map(clonePoint)
-    };
-
-    drawPolygonSurface(
-        diamond,
-        timestamp
-    );
-
-    const center =
-        getPolygonCenter(diamond);
-
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.45)";
-
-    ctx.lineWidth = 1;
-
-    for (const p of diamond) {
-        ctx.beginPath();
-        ctx.moveTo(center.x, center.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-    }
-
-    ctx.restore();
-
-    drawGeometryAnchors(
-        diamond
-    );
-
-    drawPolygonMeasurements(
-        diamond,
-        "DIAMOND"
-    );
-}
-
-// ============================================================
-// SHARD
-// ============================================================
-
-function drawLandmarkShard(
-    wrist,
-    thumb,
-    index,
-    middle,
-    ring,
-    pinky,
-    timestamp
-) {
-    const raw = [
-        wrist,
-        thumb,
-        index,
-        middle,
-        ring,
-        pinky
-    ];
-
-    const center =
-        getPolygonCenter(raw);
-
-    const shard = raw
-        .slice()
-        .sort(
-            (a, b) =>
-                Math.atan2(
-                    a.y - center.y,
-                    a.x - center.x
-                ) -
-                Math.atan2(
-                    b.y - center.y,
-                    b.x - center.x
-                )
-        );
-
-    lastGeometryDrawData = {
-        type: "polygon",
-        points: shard.map(clonePoint)
-    };
-
-    drawPolygonSurface(
-        shard,
-        timestamp
-    );
-
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.4)";
-
-    ctx.lineWidth = 1;
-
-    for (let i = 1; i < shard.length - 1; i++) {
-        ctx.beginPath();
-        ctx.moveTo(
-            shard[0].x,
-            shard[0].y
-        );
-        ctx.lineTo(
-            shard[i].x,
-            shard[i].y
-        );
-        ctx.stroke();
-    }
-
-    ctx.restore();
-
-    drawGeometryAnchors(
-        shard
-    );
-
-    drawPolygonMeasurements(
-        shard,
-        "SHARD"
-    );
-}
-
-// ============================================================
-// FRAME
-// ============================================================
-
-function drawLandmarkFrame(
-    wrist,
-    thumb,
-    index,
-    middle,
-    ring,
-    pinky,
-    timestamp
-) {
-    const raw = [
-        wrist,
-        thumb,
-        index,
-        pinky
-    ];
-
-    const frame =
-        orderAroundCenter(raw);
-
-    lastGeometryDrawData = {
-        type: "polygon",
-        points: frame.map(clonePoint)
-    };
-
-    drawPolygonSurface(
-        frame,
-        timestamp
-    );
-
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.35)";
-
-    ctx.lineWidth = 1;
-
-    const center =
-        getPolygonCenter(frame);
-
-    ctx.beginPath();
-    ctx.moveTo(
-        center.x,
-        center.y
-    );
-    ctx.lineTo(
-        middle.x,
-        middle.y
-    );
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(
-        ring.x,
-        ring.y
-    );
-    ctx.lineTo(
-        middle.x,
-        middle.y
-    );
-    ctx.stroke();
-
-    ctx.restore();
-
-    drawGeometryAnchors(
-        frame
-    );
-
-    drawPolygonMeasurements(
-        frame,
-        "FRAME"
-    );
-}
-
-// ============================================================
-// POLYGON SURFACE
-// ============================================================
-
-function drawPolygonSurface(
-    points,
-    timestamp
-) {
-    if (!points || points.length < 3) {
-        return;
-    }
-
-    drawGeometryFilter(
-        points,
-        timestamp
-    );
-
-    ctx.save();
-
-    ctx.beginPath();
-
-    ctx.moveTo(
+    targetCtx.moveTo(
         points[0].x,
         points[0].y
     );
 
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(
+    for (
+        let i = 1;
+        i < points.length;
+        i++
+    ) {
+
+        targetCtx.lineTo(
             points[i].x,
             points[i].y
         );
     }
 
-    ctx.closePath();
+    targetCtx.closePath();
+}
+
+
+// ============================================================
+// GEOMETRY FILTER VALUE
+// ============================================================
+
+function getGeometryFilterValue() {
+
+    switch (geometryFilter) {
+
+        case "NORMAL":
+            return "none";
+
+        case "BLUR":
+            return "blur(7px)";
+
+        case "BRIGHTNESS":
+            return "brightness(1.8)";
+
+        case "CONTRAST":
+            return "contrast(2)";
+
+        case "GRAYSCALE":
+            return "grayscale(1)";
+
+        case "HUE-ROTATE":
+            return "hue-rotate(135deg)";
+
+        case "INVERT":
+            return "invert(1)";
+
+        case "OPACITY":
+            return "opacity(0.55)";
+
+        case "SATURATE":
+            return "saturate(3)";
+
+        case "SEPIA":
+            return "sepia(1)";
+
+        case "DROP-SHADOW":
+            return "drop-shadow(0 0 12px white)";
+
+        case "URL":
+            return "url(#spectraGlow)";
+
+        default:
+            return "none";
+    }
+}
+
+
+// ============================================================
+// DRAW FILTERED GEOMETRY
+// ============================================================
+
+function drawFilteredGeometry(
+    points
+) {
+
+    if (!points || points.length < 3) {
+        return;
+    }
+
+    geometryCtx.clearRect(
+        0,
+        0,
+        geometryCanvas.width,
+        geometryCanvas.height
+    );
+
+
+    // --------------------------------------------------------
+    // CLIP TO HAND GEOMETRY
+    // --------------------------------------------------------
+
+    geometryCtx.save();
+
+    createPolygonPath(
+        geometryCtx,
+        points
+    );
+
+    geometryCtx.clip();
+
+
+    // --------------------------------------------------------
+    // APPLY CSS-STYLE FILTER
+    // --------------------------------------------------------
+
+    geometryCtx.filter =
+        getGeometryFilterValue();
+
+
+    // --------------------------------------------------------
+    // DRAW MIRRORED VIDEO
+    // --------------------------------------------------------
+
+    geometryCtx.translate(
+        geometryCanvas.width,
+        0
+    );
+
+    geometryCtx.scale(
+        -1,
+        1
+    );
+
+    geometryCtx.drawImage(
+        video,
+        0,
+        0,
+        geometryCanvas.width,
+        geometryCanvas.height
+    );
+
+    geometryCtx.restore();
+
+
+    // --------------------------------------------------------
+    // COMPOSITE FILTERED AREA
+    // --------------------------------------------------------
+
+    ctx.save();
+
+    ctx.globalCompositeOperation =
+        "source-over";
+
+    ctx.drawImage(
+        geometryCanvas,
+        0,
+        0
+    );
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// GEOMETRY BORDER
+// ============================================================
+
+function drawGeometryBorder(
+    points
+) {
+
+    if (!points || points.length < 3) {
+        return;
+    }
+
+    ctx.save();
+
+    createPolygonPath(
+        ctx,
+        points
+    );
 
     ctx.strokeStyle =
         "rgba(255,255,255,0.95)";
@@ -1663,389 +1295,49 @@ function drawPolygonSurface(
     ctx.lineWidth = 2;
 
     ctx.shadowColor =
-        "rgba(255,255,255,0.25)";
+        "rgba(255,255,255,0.75)";
 
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 10;
 
     ctx.stroke();
 
     ctx.restore();
 }
 
-function drawQuadSurface(
-    quad,
-    timestamp
+
+// ============================================================
+// CORNER POINTS
+// ============================================================
+
+function drawGeometryCorners(
+    points
 ) {
-    if (!quad || quad.length !== 4) {
-        return;
-    }
-
-    drawGeometryFilter(
-        quad,
-        timestamp
-    );
 
     ctx.save();
 
-    ctx.beginPath();
+    for (const point of points) {
 
-    ctx.moveTo(
-        quad[0].x,
-        quad[0].y
-    );
-
-    ctx.lineTo(
-        quad[1].x,
-        quad[1].y
-    );
-
-    ctx.lineTo(
-        quad[2].x,
-        quad[2].y
-    );
-
-    ctx.lineTo(
-        quad[3].x,
-        quad[3].y
-    );
-
-    ctx.closePath();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.95)";
-
-    ctx.lineWidth = 2;
-
-    ctx.stroke();
-
-    ctx.restore();
-}
-
-// ============================================================
-// GEOMETRY FILTERS
-// ============================================================
-
-function drawGeometryFilter(
-    points,
-    timestamp
-) {
-    if (!points || points.length < 3) {
-        return;
-    }
-
-    ctx.save();
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        points[0].x,
-        points[0].y
-    );
-
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(
-            points[i].x,
-            points[i].y
-        );
-    }
-
-    ctx.closePath();
-
-    ctx.clip();
-
-    const bounds =
-        getBounds(points);
-
-    if (geometryFilter === 0) {
-        ctx.fillStyle =
-            "rgba(255,255,255,0.055)";
-
-        ctx.fillRect(
-            bounds.minX,
-            bounds.minY,
-            bounds.width,
-            bounds.height
-        );
-    }
-
-    if (geometryFilter === 1) {
-        // REAL BLACK/WHITE INVERSION
-        // Since the camera has already been drawn onto
-        // the same canvas, white + difference inverts
-        // everything underneath inside the geometry.
-
-        ctx.globalCompositeOperation =
-            "difference";
-
-        ctx.fillStyle =
-            "#ffffff";
-
-        ctx.fillRect(
-            bounds.minX,
-            bounds.minY,
-            bounds.width,
-            bounds.height
-        );
-    }
-
-    if (geometryFilter === 2) {
-        // CYBER
-
-        ctx.fillStyle =
-            "rgba(0,255,255,0.08)";
-
-        ctx.fillRect(
-            bounds.minX,
-            bounds.minY,
-            bounds.width,
-            bounds.height
-        );
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.5)";
-
-        ctx.lineWidth = 1;
-
-        const spacing = 14;
-
-        for (
-            let x = bounds.minX - bounds.height;
-            x < bounds.maxX + bounds.height;
-            x += spacing
-        ) {
-            ctx.beginPath();
-
-            ctx.moveTo(
-                x,
-                bounds.minY
-            );
-
-            ctx.lineTo(
-                x + bounds.height,
-                bounds.maxY
-            );
-
-            ctx.stroke();
-        }
-    }
-
-    if (geometryFilter === 3) {
-        // BLUEPRINT
-
-        ctx.fillStyle =
-            "rgba(80,150,255,0.09)";
-
-        ctx.fillRect(
-            bounds.minX,
-            bounds.minY,
-            bounds.width,
-            bounds.height
-        );
-
-        ctx.strokeStyle =
-            "rgba(120,180,255,0.38)";
-
-        ctx.lineWidth = 1;
-
-        const grid = 16;
-
-        for (
-            let x = bounds.minX;
-            x <= bounds.maxX;
-            x += grid
-        ) {
-            ctx.beginPath();
-            ctx.moveTo(
-                x,
-                bounds.minY
-            );
-            ctx.lineTo(
-                x,
-                bounds.maxY
-            );
-            ctx.stroke();
-        }
-
-        for (
-            let y = bounds.minY;
-            y <= bounds.maxY;
-            y += grid
-        ) {
-            ctx.beginPath();
-            ctx.moveTo(
-                bounds.minX,
-                y
-            );
-            ctx.lineTo(
-                bounds.maxX,
-                y
-            );
-            ctx.stroke();
-        }
-    }
-
-    if (geometryFilter === 4) {
-        // CONTRAST
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.16)";
-
-        ctx.fillRect(
-            bounds.minX,
-            bounds.minY,
-            bounds.width,
-            bounds.height
-        );
-
-        ctx.strokeStyle =
-            "rgba(0,0,0,0.65)";
-
-        ctx.lineWidth = 2;
-
-        const spacing = 18;
-
-        for (
-            let x = bounds.minX - bounds.height;
-            x < bounds.maxX + bounds.height;
-            x += spacing
-        ) {
-            ctx.beginPath();
-
-            ctx.moveTo(
-                x,
-                bounds.minY
-            );
-
-            ctx.lineTo(
-                x + bounds.height,
-                bounds.maxY
-            );
-
-            ctx.stroke();
-        }
-    }
-
-    // Moving scan line
-    const scan =
-        (
-            timestamp * 0.12
-        ) %
-        Math.max(
-            1,
-            bounds.height + 80
-        );
-
-    ctx.fillStyle =
-        "rgba(255,255,255,0.15)";
-
-    ctx.fillRect(
-        bounds.minX,
-        bounds.minY + scan - 40,
-        bounds.width,
-        2
-    );
-
-    ctx.restore();
-}
-
-// ============================================================
-// QUAD GRID
-// ============================================================
-
-function drawQuadGrid(quad) {
-    if (!quad || quad.length !== 4) {
-        return;
-    }
-
-    const top =
-        lerpPoint(
-            quad[0],
-            quad[1],
-            0.5
-        );
-
-    const bottom =
-        lerpPoint(
-            quad[3],
-            quad[2],
-            0.5
-        );
-
-    const left =
-        lerpPoint(
-            quad[0],
-            quad[3],
-            0.5
-        );
-
-    const right =
-        lerpPoint(
-            quad[1],
-            quad[2],
-            0.5
-        );
-
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.18)";
-
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(
-        top.x,
-        top.y
-    );
-    ctx.lineTo(
-        bottom.x,
-        bottom.y
-    );
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(
-        left.x,
-        left.y
-    );
-    ctx.lineTo(
-        right.x,
-        right.y
-    );
-    ctx.stroke();
-
-    ctx.restore();
-}
-
-// ============================================================
-// GEOMETRY ANCHORS
-// ============================================================
-
-function drawGeometryAnchors(points) {
-    ctx.save();
-
-    for (const p of points) {
         ctx.beginPath();
 
         ctx.arc(
-            p.x,
-            p.y,
-            4,
+            point.x,
+            point.y,
+            5,
             0,
             Math.PI * 2
         );
 
         ctx.fillStyle =
-            "#ffffff";
+            "rgba(255,255,255,0.95)";
 
         ctx.fill();
 
         ctx.beginPath();
 
         ctx.arc(
-            p.x,
-            p.y,
-            8,
+            point.x,
+            point.y,
+            10,
             0,
             Math.PI * 2
         );
@@ -2061,536 +1353,485 @@ function drawGeometryAnchors(points) {
     ctx.restore();
 }
 
+
 // ============================================================
-// MEASUREMENTS
+// MEASUREMENT LINE
 // ============================================================
-
-function drawPolygonMeasurements(
-    points,
-    prefix
-) {
-    if (!points || points.length < 3) {
-        return;
-    }
-
-    const bounds =
-        getBounds(points);
-
-    const width =
-        bounds.width;
-
-    const height =
-        bounds.height;
-
-    if (points.length === 4) {
-        const length =
-            (
-                distance(
-                    points[0],
-                    points[1]
-                ) +
-                distance(
-                    points[3],
-                    points[2]
-                )
-            ) / 2;
-
-        const breadth =
-            (
-                distance(
-                    points[0],
-                    points[3]
-                ) +
-                distance(
-                    points[1],
-                    points[2]
-                )
-            ) / 2;
-
-        const center =
-            getPolygonCenter(points);
-
-        drawMeasurementOutside(
-            points[0],
-            points[1],
-            center,
-            `LENGTH ${Math.round(length)} PX`,
-            30
-        );
-
-        drawMeasurementOutside(
-            points[0],
-            points[3],
-            center,
-            `BREADTH ${Math.round(breadth)} PX`,
-            30
-        );
-
-        return;
-    }
-
-    drawHudLabel(
-        bounds.minX + 8,
-        bounds.minY - 28,
-        `${prefix} WIDTH ${Math.round(width)} PX`
-    );
-
-    drawHudLabel(
-        bounds.minX + 8,
-        bounds.minY - 2,
-        `${prefix} HEIGHT ${Math.round(height)} PX`
-    );
-}
 
 function drawMeasurementOutside(
     a,
     b,
-    polygonCenter,
     label,
-    offset
+    offset = 24
 ) {
+
     const dx =
         b.x - a.x;
 
     const dy =
         b.y - a.y;
 
-    const len =
-        Math.hypot(dx, dy) || 1;
+    const length =
+        Math.sqrt(
+            dx * dx +
+            dy * dy
+        );
 
-    let nx =
-        -dy / len;
+    if (length < 1) return;
 
-    let ny =
-        dx / len;
+    const nx =
+        -dy / length;
 
-    const midX =
-        (a.x + b.x) / 2;
+    const ny =
+        dx / length;
 
-    const midY =
-        (a.y + b.y) / 2;
+    const ax =
+        a.x + nx * offset;
 
-    const toCenterX =
-        polygonCenter.x - midX;
+    const ay =
+        a.y + ny * offset;
 
-    const toCenterY =
-        polygonCenter.y - midY;
+    const bx =
+        b.x + nx * offset;
 
-    // Make the normal point away from the polygon.
-    if (
-        nx * toCenterX +
-        ny * toCenterY >
-        0
-    ) {
-        nx *= -1;
-        ny *= -1;
-    }
-
-    const p1 = {
-        x: a.x + nx * offset,
-        y: a.y + ny * offset
-    };
-
-    const p2 = {
-        x: b.x + nx * offset,
-        y: b.y + ny * offset
-    };
+    const by =
+        b.y + ny * offset;
 
     ctx.save();
 
     ctx.strokeStyle =
-        "rgba(255,255,255,0.72)";
+        "rgba(255,255,255,0.75)";
 
     ctx.lineWidth = 1;
 
-    ctx.setLineDash([5, 4]);
+    ctx.setLineDash([
+        5,
+        5
+    ]);
 
     ctx.beginPath();
 
     ctx.moveTo(
-        p1.x,
-        p1.y
+        ax,
+        ay
     );
 
     ctx.lineTo(
-        p2.x,
-        p2.y
+        bx,
+        by
     );
 
     ctx.stroke();
 
     ctx.setLineDash([]);
 
-    drawMeasurementTick(
-        p1,
-        dx,
-        dy
-    );
-
-    drawMeasurementTick(
-        p2,
-        dx,
-        dy
-    );
-
-    ctx.restore();
-
-    const labelX =
-        (
-            p1.x +
-            p2.x
-        ) / 2;
-
-    const labelY =
-        (
-            p1.y +
-            p2.y
-        ) / 2;
-
-    drawHudLabel(
-        labelX,
-        labelY,
-        label,
-        true
-    );
-}
-
-function drawMeasurementTick(
-    pointValue,
-    dx,
-    dy
-) {
-    const len =
-        Math.hypot(dx, dy) || 1;
-
-    const nx =
-        -dy / len;
-
-    const ny =
-        dx / len;
-
-    const size = 6;
+    const tick = 5;
 
     ctx.beginPath();
 
     ctx.moveTo(
-        pointValue.x - nx * size,
-        pointValue.y - ny * size
+        ax - nx * tick,
+        ay - ny * tick
     );
 
     ctx.lineTo(
-        pointValue.x + nx * size,
-        pointValue.y + ny * size
+        ax + nx * tick,
+        ay + ny * tick
+    );
+
+    ctx.moveTo(
+        bx - nx * tick,
+        by - ny * tick
+    );
+
+    ctx.lineTo(
+        bx + nx * tick,
+        by + ny * tick
     );
 
     ctx.stroke();
+
+    const mx =
+        (ax + bx) / 2;
+
+    const my =
+        (ay + by) / 2;
+
+    ctx.font =
+        "bold 11px monospace";
+
+    ctx.textAlign =
+        "center";
+
+    ctx.textBaseline =
+        "middle";
+
+    const padding = 7;
+
+    const width =
+        ctx.measureText(label).width +
+        padding * 2;
+
+    const height = 22;
+
+    ctx.fillStyle =
+        "rgba(0,0,0,0.72)";
+
+    ctx.fillRect(
+        mx - width / 2,
+        my - height / 2,
+        width,
+        height
+    );
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.5)";
+
+    ctx.strokeRect(
+        mx - width / 2,
+        my - height / 2,
+        width,
+        height
+    );
+
+    ctx.fillStyle =
+        "white";
+
+    ctx.fillText(
+        label,
+        mx,
+        my
+    );
+
+    ctx.restore();
 }
 
-function drawHudLabel(
-    x,
-    y,
-    text,
-    centered = false
+
+// ============================================================
+// GEOMETRY MEASUREMENTS
+// ============================================================
+
+function drawPolygonMeasurements(
+    points
 ) {
+
+    if (!points || points.length < 3) {
+        return;
+    }
+
+    if (points.length === 4) {
+
+        const top =
+            distance(
+                points[0],
+                points[1]
+            );
+
+        const bottom =
+            distance(
+                points[2],
+                points[3]
+            );
+
+        const left =
+            distance(
+                points[0],
+                points[3]
+            );
+
+        const right =
+            distance(
+                points[1],
+                points[2]
+            );
+
+        const length =
+            Math.round(
+                (top + bottom) / 2
+            );
+
+        const breadth =
+            Math.round(
+                (left + right) / 2
+            );
+
+        drawMeasurementOutside(
+            points[0],
+            points[1],
+            `LENGTH ${length}px`,
+            22
+        );
+
+        drawMeasurementOutside(
+            points[1],
+            points[2],
+            `BREADTH ${breadth}px`,
+            22
+        );
+
+        return;
+    }
+
+
+    // Generic measurement for other shapes
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const point of points) {
+
+        minX =
+            Math.min(
+                minX,
+                point.x
+            );
+
+        maxX =
+            Math.max(
+                maxX,
+                point.x
+            );
+
+        minY =
+            Math.min(
+                minY,
+                point.y
+            );
+
+        maxY =
+            Math.max(
+                maxY,
+                point.y
+            );
+    }
+
+    const width =
+        Math.round(
+            maxX - minX
+        );
+
+    const height =
+        Math.round(
+            maxY - minY
+        );
+
+    const center =
+        averagePoint(points);
+
     ctx.save();
 
     ctx.font =
         "bold 11px monospace";
 
-    const paddingX = 8;
-    const paddingY = 6;
-
-    const width =
-        ctx.measureText(text).width +
-        paddingX * 2;
-
-    const height = 22;
-
-    let drawX =
-        centered
-            ? x - width / 2
-            : x;
-
-    let drawY =
-        y - height / 2;
-
-    drawX = clamp(
-        drawX,
-        4,
-        canvas.width - width - 4
-    );
-
-    drawY = clamp(
-        drawY,
-        4,
-        canvas.height - height - 4
-    );
-
-    if (ctx.roundRect) {
-        ctx.beginPath();
-
-        ctx.roundRect(
-            drawX,
-            drawY,
-            width,
-            height,
-            5
-        );
-
-        ctx.fillStyle =
-            "rgba(0,0,0,0.72)";
-
-        ctx.fill();
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.55)";
-
-        ctx.lineWidth = 1;
-
-        ctx.stroke();
-    } else {
-        ctx.fillStyle =
-            "rgba(0,0,0,0.72)";
-
-        ctx.fillRect(
-            drawX,
-            drawY,
-            width,
-            height
-        );
-    }
+    ctx.textAlign =
+        "center";
 
     ctx.fillStyle =
-        "#ffffff";
-
-    ctx.textBaseline =
-        "middle";
+        "rgba(0,0,0,0.75)";
 
     ctx.fillText(
-        text,
-        drawX + paddingX,
-        drawY + height / 2
+        `WIDTH ${width}px`,
+        center.x,
+        minY - 18
+    );
+
+    ctx.fillText(
+        `HEIGHT ${height}px`,
+        center.x,
+        maxY + 22
     );
 
     ctx.restore();
 }
 
+
 // ============================================================
-// STORED GEOMETRY
+// GEOMETRY MODES
 // ============================================================
 
-function drawStoredGeometry(
-    data,
-    timestamp
+function drawGeometryMode(
+    points
 ) {
-    if (!data?.points) return;
 
-    if (data.type === "quad") {
-        drawQuadSurface(
-            data.points,
-            timestamp
-        );
+    if (!points || points.length < 3) {
+        return;
+    }
 
-        drawQuadGrid(
-            data.points
-        );
 
-        drawGeometryAnchors(
-            data.points
-        );
+    // --------------------------------------------------------
+    // QUAD
+    // --------------------------------------------------------
 
-        drawPolygonMeasurements(
-            data.points,
-            "QUAD"
-        );
-    } else {
-        drawPolygonSurface(
-            data.points,
-            timestamp
+    if (geometryMode === "QUAD WARP") {
+
+        drawFilteredGeometry(
+            points
         );
 
-        drawGeometryAnchors(
-            data.points
+        drawGeometryBorder(
+            points
         );
 
-        drawPolygonMeasurements(
-            data.points,
-            "HAND"
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // DIAMOND
+    // --------------------------------------------------------
+
+    if (geometryMode === "DIAMOND") {
+
+        const center =
+            averagePoint(points);
+
+        const diamond = points.map(
+            point => {
+
+                return {
+                    x:
+                        center.x +
+                        (point.x - center.x) *
+                        1.12,
+
+                    y:
+                        center.y +
+                        (point.y - center.y) *
+                        1.12
+                };
+            }
         );
+
+        drawFilteredGeometry(
+            diamond
+        );
+
+        drawGeometryBorder(
+            diamond
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // SHARD
+    // --------------------------------------------------------
+
+    if (geometryMode === "SHARD") {
+
+        const center =
+            averagePoint(points);
+
+        const shard =
+            points.map(
+                (point, index) => {
+
+                    const amount =
+                        index % 2 === 0
+                            ? 1.25
+                            : 0.75;
+
+                    return {
+                        x:
+                            center.x +
+                            (point.x - center.x) *
+                            amount,
+
+                        y:
+                            center.y +
+                            (point.y - center.y) *
+                            amount
+                    };
+                }
+            );
+
+        drawFilteredGeometry(
+            shard
+        );
+
+        drawGeometryBorder(
+            shard
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // FRAME
+    // --------------------------------------------------------
+
+    if (geometryMode === "FRAME") {
+
+        const center =
+            averagePoint(points);
+
+        const outer =
+            points.map(
+                point => {
+
+                    return {
+                        x:
+                            center.x +
+                            (point.x - center.x) *
+                            1.18,
+
+                        y:
+                            center.y +
+                            (point.y - center.y) *
+                            1.18
+                    };
+                }
+            );
+
+        drawFilteredGeometry(
+            outer
+        );
+
+        ctx.save();
+
+        createPolygonPath(
+            ctx,
+            points
+        );
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.9)";
+
+        ctx.lineWidth = 2;
+
+        ctx.stroke();
+
+        createPolygonPath(
+            ctx,
+            outer
+        );
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.35)";
+
+        ctx.stroke();
+
+        ctx.restore();
+
+        return;
     }
 }
 
-// ============================================================
-// TRACKING / SMOOTHING
-// ============================================================
-
-function trackedPoint(
-    id,
-    target,
-    timestamp
-) {
-    let state =
-        geometryPoints.get(id);
-
-    if (!state) {
-        state = {
-            x: target.x,
-            y: target.y,
-            vx: 0,
-            vy: 0,
-            lastX: target.x,
-            lastY: target.y,
-            lastTime: timestamp
-        };
-
-        geometryPoints.set(
-            id,
-            state
-        );
-
-        return {
-            x: target.x,
-            y: target.y
-        };
-    }
-
-    const dt =
-        Math.max(
-            0.001,
-            Math.min(
-                0.1,
-                (
-                    timestamp -
-                    state.lastTime
-                ) / 1000
-            )
-        );
-
-    const rawVx =
-        (
-            target.x -
-            state.lastX
-        ) / dt;
-
-    const rawVy =
-        (
-            target.y -
-            state.lastY
-        ) / dt;
-
-    state.vx =
-        state.vx * 0.65 +
-        rawVx * 0.35;
-
-    state.vy =
-        state.vy * 0.65 +
-        rawVy * 0.35;
-
-    const speed =
-        Math.hypot(
-            state.vx,
-            state.vy
-        );
-
-    const normalizedSpeed =
-        Math.min(
-            1,
-            speed / 1400
-        );
-
-    const alpha =
-        GEOMETRY_SMOOTHING_SLOW +
-        (
-            GEOMETRY_SMOOTHING_FAST -
-            GEOMETRY_SMOOTHING_SLOW
-        ) *
-        normalizedSpeed;
-
-    // Small prediction helps quick movements,
-    // but avoids the giant overshoot from the old version.
-    const prediction =
-        Math.min(
-            0.045,
-            0.012 +
-            normalizedSpeed * 0.033
-        );
-
-    let predictedX =
-        target.x +
-        state.vx *
-        prediction;
-
-    let predictedY =
-        target.y +
-        state.vy *
-        prediction;
-
-    predictedX =
-        clamp(
-            predictedX,
-            0,
-            canvas.width
-        );
-
-    predictedY =
-        clamp(
-            predictedY,
-            0,
-            canvas.height
-        );
-
-    state.x =
-        state.x +
-        (
-            predictedX -
-            state.x
-        ) *
-        alpha;
-
-    state.y =
-        state.y +
-        (
-            predictedY -
-            state.y
-        ) *
-        alpha;
-
-    state.lastX =
-        target.x;
-
-    state.lastY =
-        target.y;
-
-    state.lastTime =
-        timestamp;
-
-    return {
-        x: state.x,
-        y: state.y
-    };
-}
 
 // ============================================================
 // HAND SKELETON
 // ============================================================
 
-function drawHands() {
-    if (
-        !handResults ||
-        !handResults.landmarks
-    ) {
-        return;
-    }
+function drawHandSkeleton(
+    hands
+) {
 
-    for (const hand of handResults.landmarks) {
-        drawSingleHand(hand);
-    }
-}
-
-function drawSingleHand(hand) {
-    if (!hand || hand.length < 21) {
-        return;
-    }
+    if (!hands) return;
 
     const connections = [
         [0, 1],
@@ -2603,587 +1844,157 @@ function drawSingleHand(hand) {
         [6, 7],
         [7, 8],
 
-        [5, 9],
+        [0, 9],
         [9, 10],
         [10, 11],
         [11, 12],
 
-        [9, 13],
+        [0, 13],
         [13, 14],
         [14, 15],
         [15, 16],
 
-        [13, 17],
+        [0, 17],
         [17, 18],
         [18, 19],
         [19, 20],
 
-        [0, 17]
+        [5, 9],
+        [9, 13],
+        [13, 17]
     ];
 
     ctx.save();
 
+    ctx.lineWidth = 1.4;
+
     ctx.strokeStyle =
-        "rgba(255,255,255,0.5)";
+        "rgba(255,255,255,0.55)";
 
-    ctx.lineWidth = 1;
-
-    for (const [a, b] of connections) {
-        const p1 = mirrorPoint(
-            hand[a]
-        );
-
-        const p2 = mirrorPoint(
-            hand[b]
-        );
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-            p1.x,
-            p1.y
-        );
-
-        ctx.lineTo(
-            p2.x,
-            p2.y
-        );
-
-        ctx.stroke();
-    }
-
-    for (const landmark of hand) {
-        const p =
-            mirrorPoint(
-                landmark
-            );
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x,
-            p.y,
-            2.2,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fillStyle =
-            "#ffffff";
-
-        ctx.fill();
-    }
-
-    ctx.restore();
-}
-
-// ============================================================
-// FACE PRIVACY
-// ============================================================
-
-function drawFacePrivacy() {
-    if (
-        privacyMode !== "PIXEL"
-    ) {
-        return;
-    }
-
-    if (
-        !faceResults ||
-        !faceResults.detections
-    ) {
-        return;
-    }
-
-    for (const detection of faceResults.detections) {
-        const box =
-            detection.boundingBox;
-
-        if (!box) continue;
-
-        const mirrored =
-            mirrorBoundingBox(box);
-
-        drawPixelPrivacy(
-            mirrored
-        );
-    }
-}
-
-function drawPixelPrivacy(box) {
-    const x =
-        box.originX;
-
-    const y =
-        box.originY;
-
-    const width =
-        box.width;
-
-    const height =
-        box.height;
-
-    ctx.save();
-
-    // Old pixel-style privacy base
     ctx.fillStyle =
-        "rgba(0,0,0,0.88)";
-
-    ctx.fillRect(
-        x,
-        y,
-        width,
-        height
-    );
-
-    const blockSize =
-        Math.max(
-            10,
-            Math.floor(
-                Math.min(
-                    width,
-                    height
-                ) / 8
-            )
-        );
-
-    for (
-        let py = y;
-        py < y + height;
-        py += blockSize
-    ) {
-        for (
-            let px = x;
-            px < x + width;
-            px += blockSize
-        ) {
-            const checker =
-                (
-                    Math.floor(
-                        (px - x) /
-                        blockSize
-                    ) +
-                    Math.floor(
-                        (py - y) /
-                        blockSize
-                    )
-                ) % 2;
-
-            ctx.fillStyle =
-                checker === 0
-                    ? "rgba(255,255,255,0.14)"
-                    : "rgba(80,80,80,0.25)";
-
-            ctx.fillRect(
-                px,
-                py,
-                Math.min(
-                    blockSize,
-                    x + width - px
-                ),
-                Math.min(
-                    blockSize,
-                    y + height - py
-                )
-            );
-        }
-    }
-
-    ctx.strokeStyle =
         "rgba(255,255,255,0.9)";
 
-    ctx.lineWidth = 1;
+    for (const hand of hands) {
 
-    const corner =
-        Math.min(
-            18,
-            width * 0.18,
-            height * 0.18
-        );
+        for (const [
+            startIndex,
+            endIndex
+        ] of connections) {
 
-    // Top left
-    ctx.beginPath();
-    ctx.moveTo(x, y + corner);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x + corner, y);
-    ctx.stroke();
+            const a =
+                landmarkToCanvas(
+                    hand[startIndex]
+                );
 
-    // Top right
-    ctx.beginPath();
-    ctx.moveTo(
-        x + width - corner,
-        y
-    );
-    ctx.lineTo(
-        x + width,
-        y
-    );
-    ctx.lineTo(
-        x + width,
-        y + corner
-    );
-    ctx.stroke();
+            const b =
+                landmarkToCanvas(
+                    hand[endIndex]
+                );
 
-    // Bottom left
-    ctx.beginPath();
-    ctx.moveTo(
-        x,
-        y + height - corner
-    );
-    ctx.lineTo(
-        x,
-        y + height
-    );
-    ctx.lineTo(
-        x + corner,
-        y + height
-    );
-    ctx.stroke();
+            if (!a || !b) continue;
 
-    // Bottom right
-    ctx.beginPath();
-    ctx.moveTo(
-        x + width - corner,
-        y + height
-    );
-    ctx.lineTo(
-        x + width,
-        y + height
-    );
-    ctx.lineTo(
-        x + width,
-        y + height - corner
-    );
-    ctx.stroke();
+            ctx.beginPath();
 
-    ctx.font =
-        "bold 10px monospace";
-
-    ctx.fillStyle =
-        "#ffffff";
-
-    ctx.fillText(
-        "SPECTRA VISION",
-        x + 8,
-        Math.max(
-            y + 14,
-            y - 5
-        )
-    );
-
-    ctx.font =
-        "bold 9px monospace";
-
-    ctx.fillText(
-        "FACE // PIXEL",
-        x + 8,
-        y + height - 8
-    );
-
-    ctx.restore();
-}
-
-// ============================================================
-// FACE FILTER
-// ============================================================
-
-function drawFaceFilter() {
-    if (
-        faceFilter === "OFF"
-    ) {
-        return;
-    }
-
-    if (
-        !faceResults ||
-        !faceResults.detections
-    ) {
-        return;
-    }
-
-    for (const detection of faceResults.detections) {
-        const box =
-            detection.boundingBox;
-
-        if (!box) continue;
-
-        const mirrored =
-            mirrorBoundingBox(box);
-
-        if (faceFilter === "CYBER") {
-            drawCyberFace(
-                mirrored
+            ctx.moveTo(
+                a.x,
+                a.y
             );
+
+            ctx.lineTo(
+                b.x,
+                b.y
+            );
+
+            ctx.stroke();
         }
 
-        if (faceFilter === "SCAN") {
-            drawScanFace(
-                mirrored
+        for (const landmark of hand) {
+
+            const point =
+                landmarkToCanvas(
+                    landmark
+                );
+
+            if (!point) continue;
+
+            ctx.beginPath();
+
+            ctx.arc(
+                point.x,
+                point.y,
+                2.5,
+                0,
+                Math.PI * 2
             );
-        }
 
-        if (faceFilter === "CROWN") {
-            drawCrownFace(
-                mirrored
-            );
+            ctx.fill();
         }
     }
-}
-
-function drawCyberFace(box) {
-    ctx.save();
-
-    const centerX =
-        box.originX +
-        box.width / 2;
-
-    const centerY =
-        box.originY +
-        box.height / 2;
-
-    const radius =
-        Math.max(
-            box.width,
-            box.height
-        ) * 0.55;
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.8)";
-
-    ctx.lineWidth = 1.5;
-
-    ctx.beginPath();
-
-    ctx.arc(
-        centerX,
-        centerY,
-        radius,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.stroke();
-
-    for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-
-        ctx.arc(
-            centerX,
-            centerY,
-            radius -
-                i * 10,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.strokeStyle =
-            `rgba(255,255,255,${0.35 - i * 0.07})`;
-
-        ctx.stroke();
-    }
 
     ctx.restore();
 }
 
-function drawScanFace(box) {
-    ctx.save();
-
-    ctx.beginPath();
-
-    ctx.rect(
-        box.originX,
-        box.originY,
-        box.width,
-        box.height
-    );
-
-    ctx.clip();
-
-    ctx.fillStyle =
-        "rgba(255,255,255,0.05)";
-
-    ctx.fillRect(
-        box.originX,
-        box.originY,
-        box.width,
-        box.height
-    );
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.28)";
-
-    ctx.lineWidth = 1;
-
-    const spacing = 10;
-
-    for (
-        let y = box.originY;
-        y < box.originY + box.height;
-        y += spacing
-    ) {
-        ctx.beginPath();
-
-        ctx.moveTo(
-            box.originX,
-            y
-        );
-
-        ctx.lineTo(
-            box.originX + box.width,
-            y
-        );
-
-        ctx.stroke();
-    }
-
-    ctx.restore();
-}
-
-function drawCrownFace(box) {
-    ctx.save();
-
-    const x =
-        box.originX;
-
-    const y =
-        box.originY;
-
-    const w =
-        box.width;
-
-    const h =
-        box.height;
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.85)";
-
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        x + w * 0.15,
-        y
-    );
-
-    ctx.lineTo(
-        x + w * 0.25,
-        y - h * 0.25
-    );
-
-    ctx.lineTo(
-        x + w * 0.4,
-        y
-    );
-
-    ctx.lineTo(
-        x + w * 0.5,
-        y - h * 0.3
-    );
-
-    ctx.lineTo(
-        x + w * 0.6,
-        y
-    );
-
-    ctx.lineTo(
-        x + w * 0.75,
-        y - h * 0.25
-    );
-
-    ctx.lineTo(
-        x + w * 0.85,
-        y
-    );
-
-    ctx.stroke();
-
-    ctx.restore();
-}
-
-// ============================================================
-// OBJECT DETECTION
-// ============================================================
-
-function drawObjects() {
-    if (
-        !objectDetection ||
-        !objectResults ||
-        !objectResults.detections
-    ) {
-        return;
-    }
-
-    for (const detection of objectResults.detections) {
-        const box =
-            detection.boundingBox;
-
-        if (!box) continue;
-
-        const mirrored =
-            mirrorBoundingBox(box);
-
-        ctx.save();
-
-        ctx.strokeStyle =
-            "#ffffff";
-
-        ctx.lineWidth = 1.5;
-
-        ctx.strokeRect(
-            mirrored.originX,
-            mirrored.originY,
-            mirrored.width,
-            mirrored.height
-        );
-
-        const category =
-            detection.categories?.[0];
-
-        const name =
-            category?.categoryName ||
-            "OBJECT";
-
-        const score =
-            category?.score != null
-                ? Math.round(
-                    category.score * 100
-                )
-                : 0;
-
-        const label =
-            `${name.toUpperCase()} ${score}%`;
-
-        drawHudLabel(
-            mirrored.originX,
-            mirrored.originY - 12,
-            label
-        );
-
-        ctx.restore();
-    }
-}
 
 // ============================================================
 // TARGET BOX
 // ============================================================
 
-function drawTargetBox() {
+function drawTargetBox(
+    hands
+) {
+
     if (!targetVisible) return;
 
-    const size =
-        Math.min(
-            canvas.width,
-            canvas.height
-        ) * 0.2;
+    if (!hands || !hands.length) return;
 
-    const x =
-        canvas.width / 2 -
-        size / 2;
+    let minX = Infinity;
+    let minY = Infinity;
 
-    const y =
-        canvas.height / 2 -
-        size / 2;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const hand of hands) {
+
+        for (const landmark of hand) {
+
+            const point =
+                landmarkToCanvas(
+                    landmark
+                );
+
+            minX =
+                Math.min(
+                    minX,
+                    point.x
+                );
+
+            minY =
+                Math.min(
+                    minY,
+                    point.y
+                );
+
+            maxX =
+                Math.max(
+                    maxX,
+                    point.x
+                );
+
+            maxY =
+                Math.max(
+                    maxY,
+                    point.y
+                );
+        }
+    }
+
+    const padding = 18;
+
+    minX -= padding;
+    minY -= padding;
+
+    maxX += padding;
+    maxY += padding;
 
     ctx.save();
 
@@ -3198,351 +2009,1408 @@ function drawTargetBox() {
     ]);
 
     ctx.strokeRect(
-        x,
-        y,
-        size,
-        size
+        minX,
+        minY,
+        maxX - minX,
+        maxY - minY
     );
-
-    ctx.setLineDash([]);
 
     ctx.restore();
 }
+
+
+// ============================================================
+// FACE PIXEL PRIVACY
+// ============================================================
+
+function drawFacePrivacy(
+    detections
+) {
+
+    if (
+        privacyMode === "OFF" ||
+        !detections
+    ) {
+        return;
+    }
+
+    const detectionsArray =
+        detections.detections ||
+        [];
+
+    for (
+        const detection
+        of detectionsArray
+    ) {
+
+        const box =
+            detection.boundingBox;
+
+        if (!box) continue;
+
+        const x =
+            box.originX;
+
+        const y =
+            box.originY;
+
+        const width =
+            box.width;
+
+        const height =
+            box.height;
+
+        ctx.save();
+
+        // Old pixel-style privacy look
+
+        ctx.fillStyle =
+            "rgba(0,0,0,0.94)";
+
+        ctx.fillRect(
+            x,
+            y,
+            width,
+            height
+        );
+
+        const pixelSize =
+            Math.max(
+                9,
+                Math.floor(
+                    width / 9
+                )
+            );
+
+        for (
+            let py = y;
+            py < y + height;
+            py += pixelSize
+        ) {
+
+            for (
+                let px = x;
+                px < x + width;
+                px += pixelSize
+            ) {
+
+                const row =
+                    Math.floor(
+                        (py - y) /
+                        pixelSize
+                    );
+
+                const col =
+                    Math.floor(
+                        (px - x) /
+                        pixelSize
+                    );
+
+                ctx.fillStyle =
+                    (row + col) % 2 === 0
+                        ? "rgba(255,255,255,0.18)"
+                        : "rgba(70,70,70,0.5)";
+
+                ctx.fillRect(
+                    px,
+                    py,
+                    pixelSize - 1,
+                    pixelSize - 1
+                );
+            }
+        }
+
+
+        // Corners
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.9)";
+
+        ctx.lineWidth = 2;
+
+        const corner = 13;
+
+        ctx.beginPath();
+
+        ctx.moveTo(x, y + corner);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x + corner, y);
+
+        ctx.moveTo(
+            x + width - corner,
+            y
+        );
+
+        ctx.lineTo(
+            x + width,
+            y
+        );
+
+        ctx.lineTo(
+            x + width,
+            y + corner
+        );
+
+        ctx.moveTo(
+            x,
+            y + height - corner
+        );
+
+        ctx.lineTo(
+            x,
+            y + height
+        );
+
+        ctx.lineTo(
+            x + corner,
+            y + height
+        );
+
+        ctx.moveTo(
+            x + width - corner,
+            y + height
+        );
+
+        ctx.lineTo(
+            x + width,
+            y + height
+        );
+
+        ctx.lineTo(
+            x + width,
+            y + height - corner
+        );
+
+        ctx.stroke();
+
+
+        ctx.font =
+            "bold 10px monospace";
+
+        ctx.fillStyle =
+            "white";
+
+        ctx.textAlign =
+            "left";
+
+        ctx.fillText(
+            "SPECTRA VISION",
+            x + 8,
+            y + 14
+        );
+
+        ctx.fillText(
+            "FACE // PIXEL",
+            x + 8,
+            y + height - 8
+        );
+
+        ctx.restore();
+    }
+}
+
+
+// ============================================================
+// FACE FILTER
+// ============================================================
+
+function drawFaceFilter(
+    detections
+) {
+
+    if (
+        faceFilter === "OFF" ||
+        !detections
+    ) {
+        return;
+    }
+
+    const list =
+        detections.detections ||
+        [];
+
+    for (
+        const detection
+        of list
+    ) {
+
+        const box =
+            detection.boundingBox;
+
+        if (!box) continue;
+
+        const centerX =
+            box.originX +
+            box.width / 2;
+
+        const centerY =
+            box.originY +
+            box.height / 2;
+
+        const radius =
+            Math.max(
+                box.width,
+                box.height
+            ) * 0.45;
+
+        ctx.save();
+
+        ctx.beginPath();
+
+        ctx.arc(
+            centerX,
+            centerY,
+            radius,
+            0,
+            Math.PI * 2
+        );
+
+        if (
+            faceFilter === "INVERT"
+        ) {
+
+            ctx.globalCompositeOperation =
+                "difference";
+
+            ctx.fillStyle =
+                "white";
+
+            ctx.fill();
+
+        } else if (
+            faceFilter === "SCAN"
+        ) {
+
+            ctx.strokeStyle =
+                "rgba(255,255,255,0.9)";
+
+            ctx.lineWidth = 3;
+
+            ctx.stroke();
+
+            for (
+                let i = -radius;
+                i < radius;
+                i += 8
+            ) {
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    centerX - radius,
+                    centerY + i
+                );
+
+                ctx.lineTo(
+                    centerX + radius,
+                    centerY + i
+                );
+
+                ctx.strokeStyle =
+                    "rgba(255,255,255,0.15)";
+
+                ctx.lineWidth = 1;
+
+                ctx.stroke();
+            }
+        }
+
+        ctx.restore();
+    }
+}
+
+
+// ============================================================
+// OBJECT DETECTION
+// ============================================================
+
+function drawObjects(
+    results
+) {
+
+    if (
+        !objectDetection ||
+        !results
+    ) {
+        return;
+    }
+
+    const detections =
+        results.detections ||
+        [];
+
+    ctx.save();
+
+    for (
+        const detection
+        of detections
+    ) {
+
+        const box =
+            detection.boundingBox;
+
+        if (!box) continue;
+
+        const x =
+            box.originX;
+
+        const y =
+            box.originY;
+
+        const width =
+            box.width;
+
+        const height =
+            box.height;
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.8)";
+
+        ctx.lineWidth = 1;
+
+        ctx.strokeRect(
+            x,
+            y,
+            width,
+            height
+        );
+
+        const category =
+            detection.categories &&
+            detection.categories[0];
+
+        const name =
+            category?.categoryName ||
+            "OBJECT";
+
+        const score =
+            category?.score != null
+                ? Math.round(
+                    category.score * 100
+                )
+                : 0;
+
+        ctx.font =
+            "bold 11px monospace";
+
+        ctx.fillStyle =
+            "rgba(0,0,0,0.75)";
+
+        const label =
+            `${name.toUpperCase()} ${score}%`;
+
+        const labelWidth =
+            ctx.measureText(label).width + 10;
+
+        ctx.fillRect(
+            x,
+            y - 19,
+            labelWidth,
+            19
+        );
+
+        ctx.fillStyle =
+            "white";
+
+        ctx.fillText(
+            label,
+            x + 5,
+            y - 6
+        );
+    }
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// GESTURE DISPLAY
+// ============================================================
+
+function updateGestureDisplay(
+    results
+) {
+
+    if (!gestureDisplay) return;
+
+    const gestures =
+        results?.gestures || [];
+
+    if (!gestures.length) {
+
+        gestureDisplay.textContent =
+            "GESTURE // NONE";
+
+        return;
+    }
+
+    const names = [];
+
+    for (
+        const gestureList
+        of gestures
+    ) {
+
+        const top =
+            gestureList?.[0];
+
+        if (top) {
+
+            names.push(
+                `${top.categoryName} ${Math.round(top.score * 100)}%`
+            );
+        }
+    }
+
+    gestureDisplay.textContent =
+        names.length
+            ? `GESTURE // ${names.join(" | ")}`
+            : "GESTURE // NONE";
+}
+
+
+// ============================================================
+// SIGN LANGUAGE
+// ============================================================
+
+function getSignName(
+    gestureName
+) {
+
+    const signs = {
+
+        Open_Palm: "OPEN HAND",
+
+        Closed_Fist: "FIST",
+
+        Pointing_Up: "POINT UP",
+
+        Thumb_Up: "THUMBS UP",
+
+        Thumb_Down: "THUMBS DOWN",
+
+        Victory: "VICTORY",
+
+        ILoveYou: "I LOVE YOU",
+
+        None: "UNKNOWN"
+    };
+
+    return (
+        signs[gestureName] ||
+        gestureName ||
+        "UNKNOWN"
+    );
+}
+
+
+function updateSignDisplay(
+    results
+) {
+
+    if (!signDisplay) return;
+
+    if (!signLanguage) {
+
+        signDisplay.textContent =
+            "SIGN // OFF";
+
+        return;
+    }
+
+    const gestures =
+        results?.gestures || [];
+
+    if (!gestures.length) {
+
+        signDisplay.textContent =
+            "SIGN // WAITING";
+
+        return;
+    }
+
+    const names = [];
+
+    for (
+        const gestureList
+        of gestures
+    ) {
+
+        const top =
+            gestureList?.[0];
+
+        if (top) {
+
+            names.push(
+                getSignName(
+                    top.categoryName
+                )
+            );
+        }
+    }
+
+    signDisplay.textContent =
+        names.length
+            ? `SIGN // ${names.join(" | ")}`
+            : "SIGN // UNKNOWN";
+}
+
 
 // ============================================================
 // FPS
 // ============================================================
 
-function updateFPS() {
-    frames++;
+function updateFPSDisplay() {
 
     const now =
         performance.now();
+
+    frameCounter++;
 
     if (
         now - fpsTimer >=
         1000
     ) {
-        fps =
+
+        currentFPS =
             Math.round(
-                frames *
+                frameCounter *
                 1000 /
-                (
-                    now -
-                    fpsTimer
-                )
+                (now - fpsTimer)
             );
 
-        frames = 0;
+        frameCounter = 0;
+
         fpsTimer = now;
 
-        updateFPSDisplay();
+        if (fpsDisplay) {
+
+            fpsDisplay.textContent =
+                `FPS // ${currentFPS}`;
+        }
     }
 }
 
-function updateFPSDisplay() {
-    if (!fpsBoostBtn) return;
-
-    const boostText =
-        fpsBoost
-            ? "BOOST"
-            : "NORMAL";
-
-    // Only update the FPS portion if
-    // the button isn't currently being used
-    // as a normal toggle label.
-    if (fpsBoost) {
-        fpsBoostBtn.textContent =
-            `FPS ${fps} // BOOST`;
-    } else {
-        fpsBoostBtn.textContent =
-            `FPS ${fps} // BOOST OFF`;
-    }
-}
 
 // ============================================================
-// HELPERS
+// DETECTION
 // ============================================================
 
-function point(landmark) {
-    return {
-        x:
-            landmark.x *
-            canvas.width,
-        y:
-            landmark.y *
-            canvas.height
-    };
-}
-
-function mirrorPoint(landmark) {
-    return {
-        x:
-            canvas.width -
-            landmark.x *
-            canvas.width,
-        y:
-            landmark.y *
-            canvas.height
-    };
-}
-
-function mirrorBoundingBox(box) {
-    return {
-        originX:
-            canvas.width -
-            box.originX -
-            box.width,
-
-        originY:
-            box.originY,
-
-        width:
-            box.width,
-
-        height:
-            box.height
-    };
-}
-
-function getPalmCenter(hand) {
-    const ids = [
-        0,
-        5,
-        9,
-        13,
-        17
-    ];
-
-    let x = 0;
-    let y = 0;
-
-    for (const id of ids) {
-        x +=
-            hand[id].x *
-            canvas.width;
-
-        y +=
-            hand[id].y *
-            canvas.height;
-    }
-
-    return {
-        x:
-            x / ids.length,
-        y:
-            y / ids.length
-    };
-}
-
-function distance(a, b) {
-    return Math.hypot(
-        a.x - b.x,
-        a.y - b.y
-    );
-}
-
-function lerpPoint(
-    a,
-    b,
-    t
+async function detectHands(
+    timestamp
 ) {
-    return {
-        x:
-            a.x +
-            (
-                b.x -
-                a.x
-            ) * t,
 
-        y:
-            a.y +
-            (
-                b.y -
-                a.y
-            ) * t
-    };
-}
-
-function scaleAround(
-    pointValue,
-    center,
-    scale
-) {
-    return {
-        x:
-            center.x +
-            (
-                pointValue.x -
-                center.x
-            ) * scale,
-
-        y:
-            center.y +
-            (
-                pointValue.y -
-                center.y
-            ) * scale
-    };
-}
-
-function averagePoint(...points) {
-    if (!points.length) {
-        return {
-            x: 0,
-            y: 0
-        };
+    if (!gestureRecognizer) {
+        return;
     }
 
-    let x = 0;
-    let y = 0;
-
-    for (const p of points) {
-        x += p.x;
-        y += p.y;
+    if (
+        timestamp -
+        lastHandDetection <
+        performanceConfig.hands
+    ) {
+        return;
     }
 
-    return {
-        x:
-            x / points.length,
+    lastHandDetection =
+        timestamp;
 
-        y:
-            y / points.length
-    };
-}
+    try {
 
-function getPolygonCenter(points) {
-    return averagePoint(
-        ...points
-    );
-}
+        handResults =
+            gestureRecognizer.recognizeForVideo(
+                video,
+                timestamp
+            );
 
-function orderAroundCenter(points) {
-    const center =
-        getPolygonCenter(points);
+    } catch (error) {
 
-    return points
-        .slice()
-        .sort(
-            (a, b) =>
-                Math.atan2(
-                    a.y - center.y,
-                    a.x - center.x
-                ) -
-                Math.atan2(
-                    b.y - center.y,
-                    b.x - center.x
-                )
+        console.warn(
+            "Hand detection error:",
+            error
         );
+    }
 }
 
-function getBounds(points) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
 
-    for (const p of points) {
-        minX =
-            Math.min(
-                minX,
-                p.x
-            );
+// ============================================================
+// FACE DETECTION
+// ============================================================
 
-        minY =
-            Math.min(
-                minY,
-                p.y
-            );
+async function detectFace(
+    timestamp
+) {
 
-        maxX =
-            Math.max(
-                maxX,
-                p.x
-            );
-
-        maxY =
-            Math.max(
-                maxY,
-                p.y
-            );
+    if (!faceDetector) {
+        return;
     }
 
-    return {
-        minX,
-        minY,
-        maxX,
-        maxY,
-        width:
-            maxX - minX,
-        height:
-            maxY - minY
-    };
+    if (
+        timestamp -
+        lastFaceDetection <
+        performanceConfig.face
+    ) {
+        return;
+    }
+
+    lastFaceDetection =
+        timestamp;
+
+    try {
+
+        faceResults =
+            faceDetector.detectForVideo(
+                video,
+                timestamp
+            );
+
+    } catch (error) {
+
+        console.warn(
+            "Face detection error:",
+            error
+        );
+    }
 }
 
-function clonePoint(p) {
-    return {
-        x: p.x,
-        y: p.y
-    };
-}
 
-function clamp(
-    value,
-    min,
-    max
+// ============================================================
+// OBJECT DETECTION
+// ============================================================
+
+async function detectObjects(
+    timestamp
 ) {
-    return Math.max(
-        min,
-        Math.min(
-            max,
-            value
-        )
+
+    if (
+        !objectDetector ||
+        !objectDetection
+    ) {
+        return;
+    }
+
+    if (
+        timestamp -
+        lastObjectDetection <
+        performanceConfig.objects
+    ) {
+        return;
+    }
+
+    lastObjectDetection =
+        timestamp;
+
+    try {
+
+        objectResults =
+            objectDetector.detectForVideo(
+                video,
+                timestamp
+            );
+
+    } catch (error) {
+
+        console.warn(
+            "Object detection error:",
+            error
+        );
+    }
+}
+
+
+// ============================================================
+// GEOMETRY RENDER
+// ============================================================
+
+function renderGeometry() {
+
+    if (!shapesEnabled) {
+        return;
+    }
+
+    const hands =
+        handResults?.landmarks;
+
+    if (!hands || !hands.length) {
+
+        if (
+            geometryVisible &&
+            performance.now() -
+            geometryLastSeen <
+            GEOMETRY_PERSISTENCE
+        ) {
+
+            // Keep last geometry very briefly
+            // so fast movements don't make it pop.
+            const points =
+                geometryPoints.get(
+                    "current"
+                );
+
+            if (points) {
+
+                drawGeometryMode(
+                    points
+                );
+
+                drawGeometryCorners(
+                    points
+                );
+
+                drawPolygonMeasurements(
+                    points
+                );
+            }
+        }
+
+        return;
+    }
+
+
+    const points =
+        getHandGeometry(
+            hands
+        );
+
+    if (!points || points.length < 3) {
+        return;
+    }
+
+
+    geometryPoints.set(
+        "current",
+        points
+    );
+
+    geometryVisible = true;
+
+    geometryLastSeen =
+        performance.now();
+
+
+    // Main filtered shape
+
+    drawGeometryMode(
+        points
+    );
+
+
+    // Fingertip anchors
+
+    drawGeometryCorners(
+        points
+    );
+
+
+    // Measurements
+
+    drawPolygonMeasurements(
+        points
+    );
+
+
+    if (geometryDisplay) {
+
+        geometryDisplay.textContent =
+            `GEOMETRY // ${geometryMode}`;
+    }
+
+    if (filterDisplay) {
+
+        filterDisplay.textContent =
+            `FILTER // ${geometryFilter}`;
+    }
+}
+
+
+// ============================================================
+// BUTTON HELPERS
+// ============================================================
+
+function updateButton(
+    button,
+    enabled,
+    onText,
+    offText
+) {
+
+    if (!button) return;
+
+    button.textContent =
+        enabled
+            ? onText
+            : offText;
+}
+
+
+// ============================================================
+// CAMERA BUTTON
+// ============================================================
+
+if (cameraBtn) {
+
+    cameraBtn.addEventListener(
+        "click",
+        () => {
+
+            if (cameraRunning) {
+                stopCamera();
+            } else {
+                startCamera();
+            }
+        }
     );
 }
 
+
 // ============================================================
-// STARTUP
+// HAND BUTTON
 // ============================================================
 
-setButtonText(
-    startBtn,
-    "START CAMERA"
+if (handBtn) {
+
+    handBtn.addEventListener(
+        "click",
+        () => {
+
+            handTracking =
+                !handTracking;
+
+            updateButton(
+                handBtn,
+                handTracking,
+                "HANDS ON",
+                "HANDS OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// TARGET BUTTON
+// ============================================================
+
+if (targetBtn) {
+
+    targetBtn.addEventListener(
+        "click",
+        () => {
+
+            targetVisible =
+                !targetVisible;
+
+            updateButton(
+                targetBtn,
+                targetVisible,
+                "TARGET ON",
+                "TARGET OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// OBJECT BUTTON
+// ============================================================
+
+if (objectBtn) {
+
+    objectBtn.addEventListener(
+        "click",
+        async () => {
+
+            objectDetection =
+                !objectDetection;
+
+            if (objectDetection) {
+
+                await loadVision();
+
+                await loadObjectDetector();
+            }
+
+            updateButton(
+                objectBtn,
+                objectDetection,
+                "OBJECTS ON",
+                "OBJECTS OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// SIGN LANGUAGE BUTTON
+// ============================================================
+
+if (signBtn) {
+
+    signBtn.addEventListener(
+        "click",
+        async () => {
+
+            signLanguage =
+                !signLanguage;
+
+            if (signLanguage) {
+
+                await loadVision();
+
+                await loadGestureRecognizer();
+            }
+
+            updateButton(
+                signBtn,
+                signLanguage,
+                "SIGN ON",
+                "SIGN OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// SHAPE BUTTON
+// ============================================================
+
+if (shapeBtn) {
+
+    shapeBtn.addEventListener(
+        "click",
+        () => {
+
+            shapesEnabled =
+                !shapesEnabled;
+
+            updateButton(
+                shapeBtn,
+                shapesEnabled,
+                "GEOMETRY ON",
+                "GEOMETRY OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// PRIVACY BUTTON
+// ============================================================
+
+if (privacyBtn) {
+
+    privacyBtn.addEventListener(
+        "click",
+        () => {
+
+            privacyMode =
+                privacyMode === "OFF"
+                    ? "PIXEL"
+                    : "OFF";
+
+            updateButton(
+                privacyBtn,
+                privacyMode !== "OFF",
+                "PRIVACY ON",
+                "PRIVACY OFF"
+            );
+        }
+    );
+}
+
+
+// ============================================================
+// FACE FILTER BUTTON
+// ============================================================
+
+if (faceFilterBtn) {
+
+    faceFilterBtn.addEventListener(
+        "click",
+        () => {
+
+            const filters = [
+                "OFF",
+                "INVERT",
+                "SCAN"
+            ];
+
+            const current =
+                filters.indexOf(
+                    faceFilter
+                );
+
+            const next =
+                (current + 1) %
+                filters.length;
+
+            faceFilter =
+                filters[next];
+
+            faceFilterBtn.textContent =
+                `FACE // ${faceFilter}`;
+        }
+    );
+}
+
+
+// ============================================================
+// FPS BOOST BUTTON
+// ============================================================
+
+if (fpsBoostBtn) {
+
+    fpsBoostBtn.addEventListener(
+        "click",
+        () => {
+
+            if (
+                performanceConfig ===
+                PERFORMANCE_NORMAL
+            ) {
+
+                performanceConfig =
+                    PERFORMANCE_BOOST;
+
+                fpsBoostBtn.textContent =
+                    "FPS BOOST ON";
+
+            } else {
+
+                performanceConfig =
+                    PERFORMANCE_NORMAL;
+
+                fpsBoostBtn.textContent =
+                    "FPS BOOST OFF";
+            }
+        }
+    );
+}
+
+
+// ============================================================
+// RESET
+// ============================================================
+
+if (resetBtn) {
+
+    resetBtn.addEventListener(
+        "click",
+        () => {
+
+            geometryModeIndex = 0;
+
+            geometryFilterIndex = 0;
+
+            geometryMode =
+                GEOMETRY_MODES[0];
+
+            geometryFilter =
+                GEOMETRY_FILTERS[0];
+
+            geometryPointState.clear();
+
+            geometryPoints.clear();
+
+            firstPinchTime = 0;
+
+            previousBothPinching = false;
+
+            if (geometryDisplay) {
+
+                geometryDisplay.textContent =
+                    "GEOMETRY // QUAD WARP";
+            }
+
+            if (filterDisplay) {
+
+                filterDisplay.textContent =
+                    "FILTER // NORMAL";
+            }
+        }
+    );
+}
+
+
+// ============================================================
+// KEYBOARD CONTROLS
+// ============================================================
+
+window.addEventListener(
+    "keydown",
+    event => {
+
+        if (event.key === "g") {
+
+            geometryModeIndex++;
+
+            if (
+                geometryModeIndex >=
+                GEOMETRY_MODES.length
+            ) {
+                geometryModeIndex = 0;
+            }
+
+            geometryMode =
+                GEOMETRY_MODES[
+                    geometryModeIndex
+                ];
+        }
+
+
+        if (event.key === "f") {
+
+            cycleGeometryFilter();
+        }
+
+
+        if (event.key === "r") {
+
+            geometryModeIndex = 0;
+
+            geometryFilterIndex = 0;
+
+            geometryMode =
+                GEOMETRY_MODES[0];
+
+            geometryFilter =
+                GEOMETRY_FILTERS[0];
+        }
+    }
 );
 
-setButtonText(
-    trackingBtn,
-    "HAND TRACKING ON"
-);
 
-setButtonText(
-    targetBtn,
-    "TARGET BOX ON"
-);
+// ============================================================
+// MAIN RENDER LOOP
+// ============================================================
 
-setButtonText(
-    objectBtn,
-    "OBJECT DETECTION OFF"
-);
+async function renderLoop() {
 
-setButtonText(
-    privacyBtn,
-    "FACE PRIVACY OFF"
-);
+    if (!cameraRunning) {
+        return;
+    }
 
-setButtonText(
-    signBtn,
-    "SIGN LANGUAGE OFF"
-);
+    if (
+        video.readyState <
+        HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
 
-setButtonText(
-    filterBtn,
-    "FACE FILTER OFF"
-);
+        requestAnimationFrame(
+            renderLoop
+        );
 
-shapeDisplay.textContent =
-    `GEOMETRY // ${GEOMETRY_MODES[geometryMode]} // ${GEOMETRY_FILTERS[geometryFilter]}`;
+        return;
+    }
+
+    resizeCanvas();
+
+    const timestamp =
+        performance.now();
+
+
+    // --------------------------------------------------------
+    // DRAW CAMERA
+    // --------------------------------------------------------
+
+    drawVideo();
+
+
+    // --------------------------------------------------------
+    // DETECTION
+    // --------------------------------------------------------
+
+    if (handTracking) {
+
+        await detectHands(
+            timestamp
+        );
+    } else {
+
+        handResults = null;
+    }
+
+    await detectFace(
+        timestamp
+    );
+
+    await detectObjects(
+        timestamp
+    );
+
+
+    // --------------------------------------------------------
+    // HAND VISUALS
+    // --------------------------------------------------------
+
+    if (
+        handTracking &&
+        handResults?.landmarks
+    ) {
+
+        drawHandSkeleton(
+            handResults.landmarks
+        );
+
+        drawTargetBox(
+            handResults.landmarks
+        );
+
+        checkDoublePinch(
+            handResults.landmarks
+        );
+
+        renderGeometry();
+    }
+
+
+    // --------------------------------------------------------
+    // GESTURES
+    // --------------------------------------------------------
+
+    updateGestureDisplay(
+        handResults
+    );
+
+    updateSignDisplay(
+        handResults
+    );
+
+
+    // --------------------------------------------------------
+    // FACE
+    // --------------------------------------------------------
+
+    if (faceResults) {
+
+        drawFacePrivacy(
+            faceResults
+        );
+
+        drawFaceFilter(
+            faceResults
+        );
+    }
+
+
+    // --------------------------------------------------------
+    // OBJECTS
+    // --------------------------------------------------------
+
+    drawObjects(
+        objectResults
+    );
+
+
+    // --------------------------------------------------------
+    // FPS
+    // --------------------------------------------------------
+
+    updateFPSDisplay();
+
+
+    // --------------------------------------------------------
+    // NEXT FRAME
+    // --------------------------------------------------------
+
+    requestAnimationFrame(
+        renderLoop
+    );
+}
+
+
+// ============================================================
+// INITIAL UI
+// ============================================================
+
+if (gestureDisplay) {
+    gestureDisplay.textContent =
+        "GESTURE // NONE";
+}
+
+if (signDisplay) {
+    signDisplay.textContent =
+        "SIGN // OFF";
+}
+
+if (fpsDisplay) {
+    fpsDisplay.textContent =
+        "FPS // --";
+}
+
+if (geometryDisplay) {
+    geometryDisplay.textContent =
+        "GEOMETRY // QUAD WARP";
+}
+
+if (filterDisplay) {
+    filterDisplay.textContent =
+        "FILTER // NORMAL";
+}
+
+if (targetDisplay) {
+    targetDisplay.textContent =
+        "TARGET // READY";
+}
+
+if (cameraBtn) {
+    cameraBtn.textContent =
+        "START CAMERA";
+}
+
+if (handBtn) {
+    handBtn.textContent =
+        "HANDS ON";
+}
+
+if (targetBtn) {
+    targetBtn.textContent =
+        "TARGET ON";
+}
+
+if (objectBtn) {
+    objectBtn.textContent =
+        "OBJECTS OFF";
+}
+
+if (signBtn) {
+    signBtn.textContent =
+        "SIGN OFF";
+}
+
+if (shapeBtn) {
+    shapeBtn.textContent =
+        "GEOMETRY ON";
+}
+
+if (privacyBtn) {
+    privacyBtn.textContent =
+        "PRIVACY OFF";
+}
+
+if (fpsBoostBtn) {
+    fpsBoostBtn.textContent =
+        "FPS BOOST OFF";
+}
+
+
+// ============================================================
+// READY
+// ============================================================
 
 console.log(
-    "SPECTRA initialized successfully."
+    "%cSPECTRA READY",
+    "font-weight:bold;font-size:18px"
+);
+
+console.log(
+    "Geometry filters:",
+    GEOMETRY_FILTERS
+);
+
+console.log(
+    "Geometry is anchored directly to hand landmarks."
 );
