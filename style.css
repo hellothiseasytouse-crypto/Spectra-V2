@@ -40,14 +40,6 @@ body {
     height: 100%;
     object-fit: cover;
 
-    /*
-        IMPORTANT:
-        The video is hidden visually.
-
-        script.js draws the camera into the canvas.
-        This allows face privacy to actually modify
-        the displayed camera image.
-    */
     opacity: 0;
     pointer-events: none;
 }
