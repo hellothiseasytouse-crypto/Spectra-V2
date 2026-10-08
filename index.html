@@ -3,7 +3,6 @@
 
 <head>
     <meta charset="UTF-8">
-
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
 
@@ -16,11 +15,20 @@
 
     <main class="app">
 
-        <h1>SPECTRA</h1>
+        <header class="topbar">
+            <div>
+                <h1>SPECTRA</h1>
+                <span>VISION SYSTEM v0.2</span>
+            </div>
 
-        <p>Computer Vision Experiment</p>
+            <div class="system-status">
+                <span class="status-dot"></span>
+                <span id="systemStatus">OFFLINE</span>
+            </div>
+        </header>
 
-        <div class="camera-wrapper">
+
+        <section class="camera-panel">
 
             <video id="camera"
                    autoplay
@@ -30,21 +38,93 @@
 
             <canvas id="overlay"></canvas>
 
+
             <div id="cameraMessage">
-                CAMERA OFF
+                <div>
+                    <strong>CAMERA OFFLINE</strong>
+                    <small>Press START SYSTEM</small>
+                </div>
             </div>
 
-        </div>
 
-        <button id="startButton">
-            START CAMERA
-        </button>
+            <!-- Top HUD -->
+
+            <div class="hud top-left">
+                <span>SPECTRA // TRACK</span>
+                <span id="trackingState">NO TARGET</span>
+            </div>
+
+
+            <!-- Coordinates -->
+
+            <div class="hud coordinates">
+
+                <div>
+                    <span>X</span>
+                    <strong id="posX">---</strong>
+                </div>
+
+                <div>
+                    <span>Y</span>
+                    <strong id="posY">---</strong>
+                </div>
+
+                <div>
+                    <span>DX</span>
+                    <strong id="deltaX">---</strong>
+                </div>
+
+                <div>
+                    <span>DY</span>
+                    <strong id="deltaY">---</strong>
+                </div>
+
+            </div>
+
+
+            <!-- Bottom information -->
+
+            <div class="hud bottom-left">
+
+                <div>
+                    <span>FPS</span>
+                    <strong id="fps">00</strong>
+                </div>
+
+                <div>
+                    <span>STATE</span>
+                    <strong id="targetState">STANDBY</strong>
+                </div>
+
+            </div>
+
+
+            <div class="hud bottom-right">
+                SPECTRA
+            </div>
+
+        </section>
+
+
+        <section class="controls">
+
+            <button id="startButton">
+                START SYSTEM
+            </button>
+
+            <button id="targetButton" disabled>
+                ENABLE TRACKING
+            </button>
+
+        </section>
+
 
         <p id="status">
             System ready.
         </p>
 
     </main>
+
 
     <script src="script.js"></script>
 
