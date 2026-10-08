@@ -1,13 +1,33 @@
-const video = document.getElementById("camera");
-const canvas = document.getElementById("overlay");
+import {
+    FilesetResolver,
+    HandLandmarker
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304";
 
-const ctx = canvas.getContext("2d");
+
+/* =========================================================
+   SPECTRA v0.3
+   HAND TRACKING SYSTEM
+========================================================= */
+
+
+/* =========================
+   DOM
+========================= */
+
+const video =
+    document.getElementById("camera");
+
+const canvas =
+    document.getElementById("overlay");
+
+const ctx =
+    canvas.getContext("2d");
 
 const startButton =
     document.getElementById("startButton");
 
-const targetButton =
-    document.getElementById("targetButton");
+const trackingButton =
+    document.getElementById("trackingButton");
 
 const statusText =
     document.getElementById("status");
@@ -18,43 +38,129 @@ const cameraMessage =
 const systemStatus =
     document.getElementById("systemStatus");
 
+const statusDot =
+    document.getElementById("statusDot");
+
+const handState =
+    document.getElementById("handState");
+
+const targetNumber =
+    document.getElementById("targetNumber");
+
+const xValue =
+    document.getElementById("xValue");
+
+const yValue =
+    document.getElementById("yValue");
+
+const fpsValue =
+    document.getElementById("fpsValue");
+
 const trackingState =
     document.getElementById("trackingState");
 
-const targetState =
-    document.getElementById("targetState");
+const gestureText =
+    document.getElementById("gestureText");
 
-const posX =
-    document.getElementById("posX");
+const handsValue =
+    document.getElementById("handsValue");
 
-const posY =
-    document.getElementById("posY");
+const indexValue =
+    document.getElementById("indexValue");
 
-const deltaX =
-    document.getElementById("deltaX");
+const pinchValue =
+    document.getElementById("pinchValue");
 
-const deltaY =
-    document.getElementById("deltaY");
+const gestureValue =
+    document.getElementById("gestureValue");
 
-const fpsText =
-    document.getElementById("fps");
 
+/* =========================
+   STATE
+========================= */
+
+let handLandmarker = null;
+
+let cameraStream = null;
 
 let cameraRunning = false;
-let trackingEnabled = false;
 
-let previousX = null;
-let previousY = null;
+let trackingEnabled = true;
 
-let currentX = 0;
-let currentY = 0;
+let lastVideoTime = -1;
 
 let lastFrameTime = performance.now();
 
 let frameCounter = 0;
-let lastFPSUpdate = performance.now();
 
-let fps = 0;
+let displayedFPS = 0;
+
+let previousIndex = null;
+
+
+/* =========================
+   MEDIAPIPE
+========================= */
+
+const MODEL_URL =
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+const WASM_URL =
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm";
+
+
+async function createHandLandmarker() {
+
+    statusText.textContent =
+        "Loading hand tracking model...";
+
+    try {
+
+        const vision =
+            await FilesetResolver.forVisionTasks(
+                WASM_URL
+            );
+
+
+        handLandmarker =
+            await HandLandmarker.createFromOptions(
+                vision,
+                {
+                    baseOptions: {
+                        modelAssetPath: MODEL_URL,
+
+                        delegate: "GPU"
+                    },
+
+                    runningMode: "VIDEO",
+
+                    numHands: 2,
+
+                    minHandDetectionConfidence: 0.55,
+
+                    minHandPresenceConfidence: 0.55,
+
+                    minTrackingConfidence: 0.55
+                }
+            );
+
+
+        statusText.textContent =
+            "Hand tracking system ready.";
+
+        trackingButton.disabled = false;
+
+    } catch (error) {
+
+        console.error(error);
+
+        statusText.textContent =
+            "Hand tracking failed to load.";
+
+        handState.textContent =
+            "HAND TRACKER // ERROR";
+    }
+}
 
 
 /* =========================
@@ -70,6 +176,9 @@ startButton.addEventListener(
 async function startCamera() {
 
     if (cameraRunning) {
+
+        stopCamera();
+
         return;
     }
 
@@ -80,11 +189,10 @@ async function startCamera() {
             "Requesting camera access...";
 
 
-        const stream =
+        cameraStream =
             await navigator.mediaDevices.getUserMedia({
 
                 video: {
-
                     facingMode: {
                         ideal: "environment"
                     },
@@ -96,46 +204,53 @@ async function startCamera() {
                     height: {
                         ideal: 720
                     }
-
                 },
 
                 audio: false
-
             });
 
 
-        video.srcObject = stream;
+        video.srcObject =
+            cameraStream;
+
+
+        await video.play();
+
+
+        cameraRunning = true;
 
 
         cameraMessage.style.display =
             "none";
 
 
-        cameraRunning = true;
-
-
         systemStatus.textContent =
             "ONLINE";
+
+        statusDot.classList.add(
+            "active"
+        );
+
+
+        startButton.textContent =
+            "STOP CAMERA";
 
 
         statusText.textContent =
             "Camera online.";
 
 
-        startButton.textContent =
-            "SYSTEM ONLINE";
+        setupCanvas();
 
 
-        startButton.disabled = true;
+        if (!handLandmarker) {
+
+            await createHandLandmarker();
+        }
 
 
-        targetButton.disabled = false;
-
-
-        video.addEventListener(
-            "loadedmetadata",
-            setupCanvas,
-            { once: true }
+        requestAnimationFrame(
+            detectionLoop
         );
 
 
@@ -143,18 +258,61 @@ async function startCamera() {
 
         console.error(error);
 
-
         statusText.textContent =
             "Camera access failed.";
 
-
-        cameraMessage.querySelector(
-            "strong"
-        ).textContent =
+        cameraMessage.textContent =
             "CAMERA ERROR";
+    }
+}
 
+
+function stopCamera() {
+
+    if (cameraStream) {
+
+        cameraStream
+            .getTracks()
+            .forEach(
+                track => track.stop()
+            );
     }
 
+
+    cameraStream = null;
+
+    video.srcObject = null;
+
+    cameraRunning = false;
+
+
+    systemStatus.textContent =
+        "OFFLINE";
+
+    statusDot.classList.remove(
+        "active"
+    );
+
+
+    startButton.textContent =
+        "START CAMERA";
+
+
+    cameraMessage.style.display =
+        "flex";
+
+    cameraMessage.textContent =
+        "CAMERA OFF";
+
+
+    clearOverlay();
+
+
+    resetInterface();
+
+
+    statusText.textContent =
+        "Camera stopped.";
 }
 
 
@@ -164,88 +322,23 @@ async function startCamera() {
 
 function setupCanvas() {
 
+    if (
+        video.videoWidth === 0 ||
+        video.videoHeight === 0
+    ) {
+        return;
+    }
+
+
     canvas.width =
         video.videoWidth;
 
     canvas.height =
         video.videoHeight;
-
-
-    render();
 }
 
 
-/* =========================
-   TRACKING TOGGLE
-========================= */
-
-targetButton.addEventListener(
-    "click",
-    toggleTracking
-);
-
-
-function toggleTracking() {
-
-    trackingEnabled =
-        !trackingEnabled;
-
-
-    if (trackingEnabled) {
-
-        targetButton.textContent =
-            "DISABLE TRACKING";
-
-
-        trackingState.textContent =
-            "TRACKING";
-
-
-        targetState.textContent =
-            "ACTIVE";
-
-
-        statusText.textContent =
-            "Tracking system active.";
-
-
-        previousX = null;
-        previousY = null;
-
-    } else {
-
-        targetButton.textContent =
-            "ENABLE TRACKING";
-
-
-        trackingState.textContent =
-            "NO TARGET";
-
-
-        targetState.textContent =
-            "STANDBY";
-
-
-        statusText.textContent =
-            "Tracking disabled.";
-
-
-        clearData();
-    }
-
-}
-
-
-/* =========================
-   MAIN RENDER LOOP
-========================= */
-
-function render() {
-
-    if (!cameraRunning) {
-        return;
-    }
-
+function clearOverlay() {
 
     ctx.clearRect(
         0,
@@ -253,160 +346,555 @@ function render() {
         canvas.width,
         canvas.height
     );
+}
+
+
+/* =========================
+   TRACKING BUTTON
+========================= */
+
+trackingButton.addEventListener(
+    "click",
+    () => {
+
+        trackingEnabled =
+            !trackingEnabled;
+
+
+        trackingButton.classList.toggle(
+            "active",
+            trackingEnabled
+        );
+
+
+        trackingButton.textContent =
+            trackingEnabled
+                ? "HAND TRACKING ON"
+                : "HAND TRACKING OFF";
+
+
+        if (!trackingEnabled) {
+
+            clearOverlay();
+
+            handState.textContent =
+                "HAND TRACKING // OFF";
+        }
+    }
+);
+
+
+/* =========================
+   DETECTION LOOP
+========================= */
+
+function detectionLoop() {
+
+    if (!cameraRunning) {
+        return;
+    }
+
+
+    if (
+        video.readyState >=
+        HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
+
+        if (
+            video.currentTime !==
+            lastVideoTime
+        ) {
+
+            lastVideoTime =
+                video.currentTime;
+
+
+            if (
+                trackingEnabled &&
+                handLandmarker
+            ) {
+
+                const now =
+                    performance.now();
+
+
+                try {
+
+                    const results =
+                        handLandmarker.detectForVideo(
+                            video,
+                            now
+                        );
+
+
+                    processResults(
+                        results
+                    );
+
+
+                } catch (error) {
+
+                    console.error(
+                        "Detection error:",
+                        error
+                    );
+                }
+            }
+        }
+    }
 
 
     updateFPS();
 
-
-    if (trackingEnabled) {
-
-        /*
-         * Temporary tracking target.
-         *
-         * For v0.2 we create a central
-         * tracking area. The next vision
-         * system will replace this with
-         * actual computer vision.
-         */
-
-        updateTracking();
-
-        drawTrackingOverlay();
-
-    }
-
-
-    requestAnimationFrame(render);
+    requestAnimationFrame(
+        detectionLoop
+    );
 }
 
 
 /* =========================
-   TRACKING
+   RESULTS
 ========================= */
 
-function updateTracking() {
+function processResults(results) {
 
-    /*
-     * Current temporary target:
-     * center of camera frame.
-     *
-     * This gives us the complete
-     * tracking/HUD system first.
-     */
-
-    currentX =
-        canvas.width / 2;
-
-    currentY =
-        canvas.height / 2;
+    clearOverlay();
 
 
     if (
-        previousX !== null &&
-        previousY !== null
+        !results ||
+        !results.landmarks ||
+        results.landmarks.length === 0
     ) {
 
-        const dx =
-            currentX - previousX;
+        showNoHand();
 
-        const dy =
-            currentY - previousY;
-
-
-        deltaX.textContent =
-            formatNumber(dx);
-
-
-        deltaY.textContent =
-            formatNumber(dy);
-
+        return;
     }
 
 
-    previousX = currentX;
-    previousY = currentY;
+    const handCount =
+        results.landmarks.length;
 
 
-    posX.textContent =
-        Math.round(currentX);
+    handsValue.textContent =
+        handCount;
 
 
-    posY.textContent =
-        Math.round(currentY);
-
-}
-
-
-/* =========================
-   TRACKING VISUAL
-========================= */
-
-function drawTrackingOverlay() {
-
-    const x = currentX;
-    const y = currentY;
+    handState.textContent =
+        handCount === 1
+            ? "HAND // LOCKED"
+            : "HANDS // " + handCount;
 
 
-    const boxSize =
-        Math.min(
-            canvas.width,
-            canvas.height
-        ) * 0.22;
+    trackingState.textContent =
+        "ACTIVE";
 
 
-    const half =
-        boxSize / 2;
+    targetNumber.textContent =
+        "01";
 
 
     /*
-     * Tracking box
+     * Draw every detected hand.
      */
 
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.85)";
+    results.landmarks.forEach(
+        (landmarks, index) => {
 
-    ctx.lineWidth = 2;
-
-
-    ctx.strokeRect(
-        x - half,
-        y - half,
-        boxSize,
-        boxSize
+            drawHand(
+                landmarks,
+                index
+            );
+        }
     );
 
 
     /*
-     * Crosshair
+     * Use the first hand as the
+     * primary interaction target.
+     */
+
+    const primaryHand =
+        results.landmarks[0];
+
+
+    const indexFinger =
+        primaryHand[8];
+
+    const thumb =
+        primaryHand[4];
+
+
+    const screenX =
+        indexFinger.x *
+        canvas.width;
+
+
+    const screenY =
+        indexFinger.y *
+        canvas.height;
+
+
+    /*
+     * Smooth the fingertip.
+     */
+
+    const smoothed =
+        smoothPoint(
+            previousIndex,
+            {
+                x: screenX,
+                y: screenY
+            },
+            0.35
+        );
+
+
+    previousIndex =
+        smoothed;
+
+
+    /*
+     * Update HUD.
+     */
+
+    xValue.textContent =
+        Math.round(smoothed.x);
+
+
+    yValue.textContent =
+        Math.round(smoothed.y);
+
+
+    indexValue.textContent =
+        `${Math.round(smoothed.x)}, ${Math.round(smoothed.y)}`;
+
+
+    /*
+     * Pinch detection.
+     */
+
+    const pinchDistance =
+        distance(
+            indexFinger,
+            thumb
+        );
+
+
+    const pinch =
+        pinchDistance < 0.075;
+
+
+    pinchValue.textContent =
+        pinch
+            ? "YES"
+            : "NO";
+
+
+    /*
+     * Gesture estimation.
+     */
+
+    const gesture =
+        detectGesture(
+            primaryHand,
+            pinch
+        );
+
+
+    gestureText.textContent =
+        "GESTURE // " +
+        gesture;
+
+
+    gestureValue.textContent =
+        gesture;
+
+
+    /*
+     * Draw virtual cursor.
+     */
+
+    drawCursor(
+        smoothed.x,
+        smoothed.y,
+        pinch
+    );
+
+
+    /*
+     * Draw target box around hand.
+     */
+
+    drawTargetBox(
+        primaryHand
+    );
+}
+
+
+/* =========================
+   NO HAND
+========================= */
+
+function showNoHand() {
+
+    handsValue.textContent =
+        "0";
+
+
+    handState.textContent =
+        "HAND // NOT DETECTED";
+
+
+    trackingState.textContent =
+        "SEARCH";
+
+
+    targetNumber.textContent =
+        "00";
+
+
+    xValue.textContent =
+        "---";
+
+
+    yValue.textContent =
+        "---";
+
+
+    indexValue.textContent =
+        "---";
+
+
+    pinchValue.textContent =
+        "---";
+
+
+    gestureValue.textContent =
+        "NONE";
+
+
+    gestureText.textContent =
+        "GESTURE // NONE";
+
+
+    previousIndex = null;
+}
+
+
+/* =========================
+   HAND DRAWING
+========================= */
+
+const CONNECTIONS = [
+
+    /* Thumb */
+
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 4],
+
+    /* Index */
+
+    [0, 5],
+    [5, 6],
+    [6, 7],
+    [7, 8],
+
+    /* Middle */
+
+    [0, 9],
+    [9, 10],
+    [10, 11],
+    [11, 12],
+
+    /* Ring */
+
+    [0, 13],
+    [13, 14],
+    [14, 15],
+    [15, 16],
+
+    /* Pinky */
+
+    [0, 17],
+    [17, 18],
+    [18, 19],
+    [19, 20],
+
+    /* Palm */
+
+    [5, 9],
+    [9, 13],
+    [13, 17]
+];
+
+
+function drawHand(
+    landmarks,
+    handIndex
+) {
+
+    const points =
+        landmarks.map(
+            point => ({
+                x: point.x *
+                    canvas.width,
+
+                y: point.y *
+                    canvas.height
+            })
+        );
+
+
+    /*
+     * Connections
+     */
+
+    ctx.save();
+
+    ctx.lineWidth = 1.5;
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.75)";
+
+    ctx.setLineDash([]);
+
+    CONNECTIONS.forEach(
+        connection => {
+
+            const start =
+                points[
+                    connection[0]
+                ];
+
+            const end =
+                points[
+                    connection[1]
+                ];
+
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                start.x,
+                start.y
+            );
+
+            ctx.lineTo(
+                end.x,
+                end.y
+            );
+
+            ctx.stroke();
+        }
+    );
+
+
+    /*
+     * Landmark points
+     */
+
+    points.forEach(
+        (point, index) => {
+
+            ctx.beginPath();
+
+            ctx.arc(
+                point.x,
+                point.y,
+                index === 8
+                    ? 5
+                    : 3,
+                0,
+                Math.PI * 2
+            );
+
+
+            ctx.fillStyle =
+                index === 8
+                    ? "#ffffff"
+                    : "rgba(255,255,255,0.75)";
+
+
+            ctx.fill();
+        }
+    );
+
+
+    ctx.restore();
+}
+
+
+/* =========================
+   VIRTUAL CURSOR
+========================= */
+
+function drawCursor(
+    x,
+    y,
+    isPinching
+) {
+
+    const size =
+        isPinching
+            ? 24
+            : 34;
+
+
+    ctx.save();
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.9)";
+
+    ctx.lineWidth = 1.5;
+
+    ctx.setLineDash([]);
+
+
+    /*
+     * Horizontal line
      */
 
     ctx.beginPath();
 
     ctx.moveTo(
-        x - 35,
+        x - size,
         y
     );
 
     ctx.lineTo(
-        x + 35,
+        x + size,
         y
-    );
-
-    ctx.moveTo(
-        x,
-        y - 35
-    );
-
-    ctx.lineTo(
-        x,
-        y + 35
     );
 
     ctx.stroke();
 
 
     /*
-     * Center point
+     * Vertical line
+     */
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        x,
+        y - size
+    );
+
+    ctx.lineTo(
+        x,
+        y + size
+    );
+
+    ctx.stroke();
+
+
+    /*
+     * Center
      */
 
     ctx.beginPath();
@@ -414,110 +902,395 @@ function drawTrackingOverlay() {
     ctx.arc(
         x,
         y,
-        5,
+        isPinching ? 7 : 4,
         0,
         Math.PI * 2
-    );
-
-    ctx.fillStyle =
-        "white";
-
-    ctx.fill();
-
-
-    /*
-     * Extended tracking lines
-     */
-
-    ctx.setLineDash([
-        8,
-        8
-    ]);
-
-    ctx.lineWidth = 1;
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.35)";
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        x,
-        0
-    );
-
-    ctx.lineTo(
-        x,
-        y - half
-    );
-
-    ctx.moveTo(
-        x,
-        y + half
-    );
-
-    ctx.lineTo(
-        x,
-        canvas.height
-    );
-
-    ctx.moveTo(
-        0,
-        y
-    );
-
-    ctx.lineTo(
-        x - half,
-        y
-    );
-
-    ctx.moveTo(
-        x + half,
-        y
-    );
-
-    ctx.lineTo(
-        canvas.width,
-        y
     );
 
     ctx.stroke();
 
 
+    ctx.restore();
+}
+
+
+/* =========================
+   TARGET BOX
+========================= */
+
+function drawTargetBox(
+    landmarks
+) {
+
+    const xs =
+        landmarks.map(
+            point =>
+                point.x *
+                canvas.width
+        );
+
+
+    const ys =
+        landmarks.map(
+            point =>
+                point.y *
+                canvas.height
+        );
+
+
+    const minX =
+        Math.min(...xs);
+
+    const maxX =
+        Math.max(...xs);
+
+    const minY =
+        Math.min(...ys);
+
+    const maxY =
+        Math.max(...ys);
+
+
+    const padding = 22;
+
+
+    const x =
+        minX - padding;
+
+    const y =
+        minY - padding;
+
+    const width =
+        maxX -
+        minX +
+        padding * 2;
+
+    const height =
+        maxY -
+        minY +
+        padding * 2;
+
+
+    ctx.save();
+
+
+    /*
+     * Target rectangle
+     */
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.75)";
+
+    ctx.lineWidth = 1;
+
     ctx.setLineDash([]);
+
+
+    ctx.strokeRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+
+    /*
+     * Dashed center lines
+     */
+
+    const centerX =
+        x + width / 2;
+
+    const centerY =
+        y + height / 2;
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.25)";
+
+    ctx.setLineDash(
+        [8, 8]
+    );
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        centerX,
+        0
+    );
+
+    ctx.lineTo(
+        centerX,
+        canvas.height
+    );
+
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        0,
+        centerY
+    );
+
+    ctx.lineTo(
+        canvas.width,
+        centerY
+    );
+
+    ctx.stroke();
+
+
+    ctx.restore();
 
 
     /*
      * Target label
      */
 
-    ctx.font =
-        "12px monospace";
+    ctx.save();
 
     ctx.fillStyle =
-        "white";
+        "rgba(0,0,0,0.65)";
+
+    ctx.fillRect(
+        x,
+        y - 22,
+        115,
+        18
+    );
+
+
+    ctx.fillStyle =
+        "#fff";
+
+    ctx.font =
+        "11px Courier New";
+
 
     ctx.fillText(
         "TARGET // 01",
-        x + half + 10,
-        y - half
+        x + 6,
+        y - 9
     );
 
 
-    /*
-     * Coordinate label
-     */
+    ctx.restore();
+}
 
-    ctx.fillStyle =
-        "rgba(255,255,255,0.65)";
 
-    ctx.fillText(
-        `X:${Math.round(x)} Y:${Math.round(y)}`,
-        x + half + 10,
-        y - half + 18
+/* =========================
+   GESTURE DETECTION
+========================= */
+
+function detectGesture(
+    landmarks,
+    pinch
+) {
+
+    if (pinch) {
+
+        return "PINCH";
+    }
+
+
+    const indexExtended =
+        isFingerExtended(
+            landmarks,
+            8,
+            6
+        );
+
+
+    const middleExtended =
+        isFingerExtended(
+            landmarks,
+            12,
+            10
+        );
+
+
+    const ringExtended =
+        isFingerExtended(
+            landmarks,
+            16,
+            14
+        );
+
+
+    const pinkyExtended =
+        isFingerExtended(
+            landmarks,
+            20,
+            18
+        );
+
+
+    if (
+        indexExtended &&
+        !middleExtended &&
+        !ringExtended &&
+        !pinkyExtended
+    ) {
+
+        return "POINT";
+    }
+
+
+    if (
+        indexExtended &&
+        middleExtended &&
+        !ringExtended &&
+        !pinkyExtended
+    ) {
+
+        return "TWO FINGER";
+    }
+
+
+    if (
+        indexExtended &&
+        middleExtended &&
+        ringExtended &&
+        pinkyExtended
+    ) {
+
+        return "OPEN PALM";
+    }
+
+
+    if (
+        !indexExtended &&
+        !middleExtended &&
+        !ringExtended &&
+        !pinkyExtended
+    ) {
+
+        return "FIST";
+    }
+
+
+    return "TRACKING";
+}
+
+
+/* =========================
+   FINGER EXTENSION
+========================= */
+
+function isFingerExtended(
+    landmarks,
+    tipIndex,
+    pipIndex
+) {
+
+    const wrist =
+        landmarks[0];
+
+    const tip =
+        landmarks[tipIndex];
+
+    const pip =
+        landmarks[pipIndex];
+
+
+    const tipDistance =
+        distance3D(
+            tip,
+            wrist
+        );
+
+
+    const pipDistance =
+        distance3D(
+            pip,
+            wrist
+        );
+
+
+    return tipDistance >
+        pipDistance * 1.12;
+}
+
+
+/* =========================
+   DISTANCE
+========================= */
+
+function distance(
+    a,
+    b
+) {
+
+    const dx =
+        a.x - b.x;
+
+    const dy =
+        a.y - b.y;
+
+    return Math.sqrt(
+        dx * dx +
+        dy * dy
     );
+}
 
+
+function distance3D(
+    a,
+    b
+) {
+
+    const dx =
+        a.x - b.x;
+
+    const dy =
+        a.y - b.y;
+
+    const dz =
+        (a.z || 0) -
+        (b.z || 0);
+
+
+    return Math.sqrt(
+        dx * dx +
+        dy * dy +
+        dz * dz
+    );
+}
+
+
+/* =========================
+   SMOOTHING
+========================= */
+
+function smoothPoint(
+    previous,
+    current,
+    amount
+) {
+
+    if (!previous) {
+
+        return current;
+    }
+
+
+    return {
+
+        x:
+            previous.x +
+            (current.x -
+                previous.x) *
+            amount,
+
+        y:
+            previous.y +
+            (current.y -
+                previous.y) *
+            amount
+    };
 }
 
 
@@ -534,61 +1307,83 @@ function updateFPS() {
         performance.now();
 
 
-    if (
-        now - lastFPSUpdate >= 1000
-    ) {
+    const elapsed =
+        now -
+        lastFrameTime;
 
-        fps =
-            frameCounter;
+
+    if (elapsed >= 1000) {
+
+        displayedFPS =
+            Math.round(
+                frameCounter *
+                1000 /
+                elapsed
+            );
+
+
+        fpsValue.textContent =
+            displayedFPS;
 
 
         frameCounter = 0;
 
-        lastFPSUpdate = now;
-
-
-        fpsText.textContent =
-            fps.toString()
-                .padStart(2, "0");
+        lastFrameTime =
+            now;
     }
-
 }
 
 
 /* =========================
-   CLEAR DATA
+   RESET
 ========================= */
 
-function clearData() {
+function resetInterface() {
 
-    posX.textContent =
+    handsValue.textContent =
+        "0";
+
+    indexValue.textContent =
         "---";
 
-    posY.textContent =
+    pinchValue.textContent =
         "---";
 
-    deltaX.textContent =
+    gestureValue.textContent =
+        "NONE";
+
+    gestureText.textContent =
+        "GESTURE // NONE";
+
+    handState.textContent =
+        "HAND // NOT DETECTED";
+
+    trackingState.textContent =
+        "IDLE";
+
+    targetNumber.textContent =
+        "00";
+
+    xValue.textContent =
         "---";
 
-    deltaY.textContent =
+    yValue.textContent =
         "---";
+
+    previousIndex = null;
 }
 
 
 /* =========================
-   FORMAT NUMBERS
+   INITIALIZATION
 ========================= */
 
-function formatNumber(value) {
+trackingButton.textContent =
+    "HAND TRACKING ON";
 
-    const rounded =
-        Math.round(value);
-
-
-    if (rounded > 0) {
-        return "+" + rounded;
-    }
+trackingButton.classList.add(
+    "active"
+);
 
 
-    return rounded.toString();
-}
+createHandLandmarker();
