@@ -2,11 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    >
-    <meta name="theme-color" content="#050505">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>SPECTRA</title>
 
@@ -14,139 +11,117 @@
 </head>
 
 <body>
-    <main class="app">
-        <section
-            class="camera-wrapper"
-            aria-label="SPECTRA camera view"
-        >
-            <video
-                id="camera"
-                autoplay
-                playsinline
-                muted
-            ></video>
 
-            <canvas id="overlay"></canvas>
+<div class="app">
 
-            <div class="hud">
-                <div class="top-left">
-                    <div class="title">SPECTRA</div>
-                    <div class="mode">MODE // VISION AI</div>
-                </div>
+    <div class="camera-wrapper">
 
-                <div class="top-right">
-                    <div>
-                        HAND // <span id="handStatus">WAITING</span>
-                    </div>
+        <video id="camera"
+               autoplay
+               playsinline
+               muted></video>
 
-                    <div>
-                        FACE // <span id="faceStatus">WAITING</span>
-                    </div>
+        <canvas id="overlay"></canvas>
 
-                    <div>
-                        FPS // <span id="fps">0</span>
-                    </div>
-                </div>
+        <div class="hud">
 
-                <div class="center-info" aria-hidden="true">
-                    <div class="target-label">SPECTRA VISION</div>
-                    <div class="crosshair"></div>
-                </div>
-
-                <div class="bottom-left">
-                    <div>
-                        GESTURE // <span id="gesture">NONE</span>
-                    </div>
-
-                    <div>
-                        SIGN // <span id="sign">NONE</span>
-                    </div>
-
-                    <div>
-                        SHAPE // <span id="shapeStatus">READY</span>
-                    </div>
-                </div>
-
-                <div class="bottom-right">
-                    <div>
-                        OBJECTS // <span id="objectStatus">OFF</span>
-                    </div>
-
-                    <div>
-                        FILTER // <span id="filterStatus">OFF</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section
-            class="controls"
-            aria-label="SPECTRA controls"
-        >
-            <button id="startBtn" type="button">
-                START CAMERA
-            </button>
-
-            <button id="trackingBtn" type="button">
-                HAND TRACKING ON
-            </button>
-
-            <button id="targetBtn" type="button">
-                TARGET BOX ON
-            </button>
-
-            <button id="objectBtn" type="button">
-                OBJECT DETECTION OFF
-            </button>
-
-            <button id="privacyBtn" type="button">
-                FACE PRIVACY OFF
-            </button>
-
-            <button id="signBtn" type="button">
-                SIGN LANGUAGE OFF
-            </button>
-
-            <button id="filterBtn" type="button">
-                FILTER OFF
-            </button>
-
-            <button id="shapeBtn" type="button">
-                SHAPES ON
-            </button>
-        </section>
-
-        <section
-            class="info-panel"
-            aria-label="Tracking information"
-        >
-            <div>
-                <span>HANDS</span>
-                <strong id="handsInfo">0</strong>
+            <div class="top-left">
+                <div class="title">SPECTRA</div>
+                <div class="mode">MODE // VISION AI</div>
             </div>
 
-            <div>
-                <span>FACES</span>
-                <strong id="facesInfo">0</strong>
+            <div class="top-right">
+                <div>HAND // <span id="handStatus">WAITING</span></div>
+                <div>FACE // <span id="faceStatus">WAITING</span></div>
+                <div>FPS // <span id="fps">0</span></div>
             </div>
 
-            <div>
-                <span>GESTURE</span>
-                <strong id="gestureInfo">NONE</strong>
+            <div class="center-info">
+                <div class="target-label">SPECTRA VISION</div>
+                <div class="crosshair"></div>
             </div>
 
-            <div>
-                <span>SIGN</span>
-                <strong id="signInfo">NONE</strong>
+            <div class="bottom-left">
+                <div>GESTURE // <span id="gesture">NONE</span></div>
+                <div>SIGN // <span id="sign">NONE</span></div>
+                <div>SHAPE // <span id="shapeStatus">READY</span></div>
             </div>
 
-            <div>
-                <span>SHAPES</span>
-                <strong id="shapesInfo">0</strong>
+            <div class="bottom-right">
+                <div>OBJECTS // <span id="objectStatus">OFF</span></div>
+                <div>FILTER // <span id="filterStatus">OFF</span></div>
             </div>
-        </section>
-    </main>
 
-    <script type="module" src="script.js"></script>
+        </div>
+
+    </div>
+
+    <div class="controls">
+
+        <button id="startBtn">START CAMERA</button>
+
+        <button id="trackingBtn">
+            HAND TRACKING ON
+        </button>
+
+        <button id="targetBtn">
+            TARGET BOX ON
+        </button>
+
+        <button id="objectBtn">
+            OBJECT DETECTION OFF
+        </button>
+
+        <button id="privacyBtn">
+            FACE PRIVACY OFF
+        </button>
+
+        <button id="signBtn">
+            SIGN LANGUAGE OFF
+        </button>
+
+        <button id="filterBtn">
+            FILTER OFF
+        </button>
+
+        <button id="shapeBtn">
+            SHAPES ON
+        </button>
+
+    </div>
+
+    <div class="info-panel">
+
+        <div>
+            <span>HANDS</span>
+            <strong id="handsInfo">0</strong>
+        </div>
+
+        <div>
+            <span>FACES</span>
+            <strong id="facesInfo">0</strong>
+        </div>
+
+        <div>
+            <span>GESTURE</span>
+            <strong id="gestureInfo">NONE</strong>
+        </div>
+
+        <div>
+            <span>SIGN</span>
+            <strong id="signInfo">NONE</strong>
+        </div>
+
+        <div>
+            <span>SHAPES</span>
+            <strong id="shapesInfo">0</strong>
+        </div>
+
+    </div>
+
+</div>
+
+<script type="module" src="script.js"></script>
+
 </body>
 </html>
