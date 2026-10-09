@@ -316,16 +316,12 @@ if (ui.camera) {
 }
 
 function drawVideo() {
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Mirror the camera preview for a natural selfie-camera feel.
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    applyImageFilter();
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
 }
 
 function applyImageFilter() {
