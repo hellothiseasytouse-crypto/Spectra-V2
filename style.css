@@ -2,39 +2,21 @@
     box-sizing: border-box;
 }
 
-:root {
-    color-scheme: dark;
-
-    --bg: #050505;
-    --panel: #080808;
-    --line: rgba(255, 255, 255, 0.16);
-    --line-strong: rgba(255, 255, 255, 0.34);
-    --text: #ffffff;
-    --muted: rgba(255, 255, 255, 0.55);
-}
-
 html,
 body {
     margin: 0;
     padding: 0;
     width: 100%;
     min-height: 100%;
-    background: var(--bg);
-    color: var(--text);
+    background: #050505;
+    color: #ffffff;
     font-family: Arial, Helvetica, sans-serif;
+    overflow-x: hidden;
 }
 
 body {
-    min-height: 100vh;
     display: flex;
     justify-content: center;
-    overflow-x: hidden;
-    -webkit-text-size-adjust: 100%;
-}
-
-button {
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
 }
 
 .app {
@@ -47,34 +29,31 @@ button {
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
-    min-height: 220px;
-    max-height: 78vh;
-    background: #000000;
+    background: #000;
     overflow: hidden;
-    border: 1px solid var(--line);
-    isolation: isolate;
+    border: 1px solid rgba(255,255,255,0.15);
 }
 
 #camera {
     position: absolute;
-    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 1;
-    transform: scaleX(-1);
+
+    opacity: 0;
     pointer-events: none;
-    z-index: 0;
 }
 
 #overlay {
     position: absolute;
     inset: 0;
+
     width: 100%;
     height: 100%;
+
     display: block;
-    z-index: 1;
 }
+
 .hud {
     position: absolute;
     inset: 0;
@@ -82,7 +61,6 @@ button {
     font-family: monospace;
     font-size: 12px;
     letter-spacing: 1px;
-    overflow: hidden;
 }
 
 .top-left {
@@ -92,14 +70,14 @@ button {
 }
 
 .title {
-    font-size: clamp(17px, 2.1vw, 25px);
+    font-size: 25px;
     font-weight: bold;
     letter-spacing: 4px;
 }
 
 .mode {
     margin-top: 5px;
-    color: var(--muted);
+    opacity: 0.55;
 }
 
 .top-right {
@@ -122,21 +100,20 @@ button {
 .target-label {
     font-size: 9px;
     margin-bottom: 8px;
-    white-space: nowrap;
 }
 
 .crosshair {
-    position: relative;
     width: 40px;
     height: 40px;
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(255,255,255,0.35);
+    position: relative;
 }
 
 .crosshair::before,
 .crosshair::after {
     content: "";
     position: absolute;
-    background: rgba(255, 255, 255, 0.35);
+    background: rgba(255,255,255,0.35);
 }
 
 .crosshair::before {
@@ -170,24 +147,26 @@ button {
 
 .controls {
     margin-top: 12px;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
 button {
-    min-height: 42px;
     background: #090909;
-    color: var(--text);
-    border: 1px solid var(--line-strong);
-    border-radius: 0;
-    padding: 10px 12px;
+    color: #fff;
+
+    border: 1px solid rgba(255,255,255,0.3);
+
+    padding: 10px 14px;
+
     font-family: monospace;
     font-size: 11px;
-    letter-spacing: 0.4px;
-    line-height: 1.35;
+    letter-spacing: 0.5px;
+
     cursor: pointer;
-    overflow-wrap: anywhere;
+
     transition:
         background 0.15s ease,
         border-color 0.15s ease;
@@ -195,29 +174,27 @@ button {
 
 button:hover {
     background: #151515;
-    border-color: rgba(255, 255, 255, 0.7);
+    border-color: rgba(255,255,255,0.7);
 }
 
 button:active {
-    background: #202020;
-}
-
-button:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: 2px;
+    transform: translateY(1px);
 }
 
 .info-panel {
     margin-top: 12px;
+
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns:
+        repeat(5, minmax(100px, 1fr));
+
     gap: 8px;
 }
 
 .info-panel > div {
-    min-width: 0;
-    border: 1px solid var(--line);
-    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.15);
+    background: #080808;
+
     padding: 10px;
 }
 
@@ -225,46 +202,23 @@ button:focus-visible {
     display: block;
     font-family: monospace;
     font-size: 9px;
-    color: var(--muted);
+    opacity: 0.5;
     margin-bottom: 5px;
 }
 
 .info-panel strong {
-    display: block;
     font-family: monospace;
     font-size: 13px;
-    overflow-wrap: anywhere;
 }
 
-@media (max-width: 900px) {
-    .controls {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+@media (max-width: 700px) {
 
-    .info-panel {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 600px) {
     .app {
         padding: 6px;
     }
 
     .camera-wrapper {
-        aspect-ratio: 4 / 3;
-        min-height: 240px;
-        max-height: 72vh;
-    }
-
-    .hud {
-        font-size: 9px;
-        letter-spacing: 0.5px;
-    }
-
-    .top-left {
-        top: 10px;
-        left: 10px;
+        aspect-ratio: 16 / 9;
     }
 
     .title {
@@ -272,65 +226,42 @@ button:focus-visible {
         letter-spacing: 3px;
     }
 
-    .mode {
-        font-size: 8px;
+    .hud {
+        font-size: 9px;
+    }
+
+    .top-left {
+        top: 10px;
+        left: 10px;
     }
 
     .top-right {
         top: 10px;
         right: 10px;
-        line-height: 1.65;
     }
 
     .bottom-left {
         left: 10px;
         bottom: 10px;
-        line-height: 1.65;
-        max-width: 54%;
-        overflow-wrap: anywhere;
     }
 
     .bottom-right {
         right: 10px;
         bottom: 10px;
-        line-height: 1.65;
-        max-width: 43%;
-        overflow-wrap: anywhere;
-    }
-
-    .center-info {
-        opacity: 0.18;
-    }
-
-    .crosshair {
-        width: 30px;
-        height: 30px;
     }
 
     .controls {
-        gap: 6px;
-        margin-top: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
     }
 
     button {
-        min-height: 44px;
-        padding: 10px 7px;
-        font-size: 10px;
+        width: 100%;
+        padding: 12px 6px;
+        font-size: 9px;
     }
 
     .info-panel {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
-        margin-top: 8px;
-    }
-
-    .info-panel > div {
-        padding: 9px;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    button {
-        transition: none;
+        grid-template-columns: repeat(2, 1fr);
     }
 }
