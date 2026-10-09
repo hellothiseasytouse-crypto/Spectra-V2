@@ -1,62 +1,152 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#050608">
-  <title>SPECTRA — Hand Geometry</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+    <meta name="theme-color" content="#050505">
+
+    <title>SPECTRA</title>
+
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <main class="app">
-    <section class="camera-wrapper" aria-label="SPECTRA camera view">
-      <video id="camera" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <header class="hud-top">
-        <div class="brand"><span class="brand-mark">◈</span><div><strong>SPECTRA</strong><small>HAND GEOMETRY INTERFACE</small></div></div>
-        <div class="mode">MODE // VISION AI</div>
-      </header>
-      <div class="status-row">
-        <span id="handStatus">HAND // WAITING</span>
-        <span id="faceStatus">FACE // READY</span>
-        <span id="fps">FPS // --</span>
-      </div>
-      <div class="center-target"><span class="target-label">SPECTRA VISION</span><i></i><b></b></div>
-      <div class="hud-bottom-left">
-        <span id="gesture">GESTURE // --</span>
-        <span id="sign">SIGN // OFF</span>
-        <span id="shapeStatus">GEOMETRY // QUAD WARP</span>
-      </div>
-      <div class="hud-bottom-right">
-        <span id="objectStatus">OBJECTS // OFF</span>
-        <span id="filterStatus">FILTER // NORMAL</span>
-      </div>
-      <div class="camera-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    </section>
+    <main class="app">
+        <section
+            class="camera-wrapper"
+            aria-label="SPECTRA camera view"
+        >
+            <video
+                id="camera"
+                autoplay
+                playsinline
+                muted
+            ></video>
 
-    <nav class="controls" aria-label="Camera controls">
-      <button id="startBtn" class="primary">START CAMERA</button>
-      <button id="trackingBtn" class="active">HANDS ON</button>
-      <button id="targetBtn" class="active">TARGET ON</button>
-      <button id="objectBtn">OBJECTS OFF</button>
-      <button id="privacyBtn">PRIVACY OFF</button>
-      <button id="signBtn">SIGN OFF</button>
-      <button id="shapeBtn" class="active">GEOMETRY ON</button>
-      <button id="filterBtn">NEXT FILTER ↗</button>
-    </nav>
+            <canvas id="overlay"></canvas>
 
-    <section class="info-panel">
-      <div class="panel-heading"><span>LIVE DIAGNOSTICS</span><span>SYS.01 / TRACKING</span></div>
-      <div class="info-grid">
-        <article><small>HANDS</small><strong id="handsInfo">Waiting for camera</strong></article>
-        <article><small>FACES</small><strong id="facesInfo">Privacy ready</strong></article>
-        <article><small>GESTURE</small><strong id="gestureInfo">No gesture detected</strong></article>
-        <article><small>SIGN RECOGNITION</small><strong id="signInfo">Disabled</strong></article>
-        <article><small>GEOMETRY</small><strong id="shapesInfo">QUAD WARP</strong></article>
-      </div>
-      <p class="hint">GESTURES: pinch once to change filter · move index finger up/down to cycle filters · twist your hand to change geometry style · press G/F to change geometry/filter.</p>
-    </section>
-  </main>
-  <script type="module" src="script.js"></script>
+            <div class="hud">
+                <div class="top-left">
+                    <div class="title">SPECTRA</div>
+                    <div class="mode">MODE // VISION AI</div>
+                </div>
+
+                <div class="top-right">
+                    <div>
+                        HAND // <span id="handStatus">WAITING</span>
+                    </div>
+
+                    <div>
+                        FACE // <span id="faceStatus">WAITING</span>
+                    </div>
+
+                    <div>
+                        FPS // <span id="fps">0</span>
+                    </div>
+                </div>
+
+                <div class="center-info" aria-hidden="true">
+                    <div class="target-label">SPECTRA VISION</div>
+                    <div class="crosshair"></div>
+                </div>
+
+                <div class="bottom-left">
+                    <div>
+                        GESTURE // <span id="gesture">NONE</span>
+                    </div>
+
+                    <div>
+                        SIGN // <span id="sign">NONE</span>
+                    </div>
+
+                    <div>
+                        SHAPE // <span id="shapeStatus">READY</span>
+                    </div>
+                </div>
+
+                <div class="bottom-right">
+                    <div>
+                        OBJECTS // <span id="objectStatus">OFF</span>
+                    </div>
+
+                    <div>
+                        FILTER // <span id="filterStatus">OFF</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section
+            class="controls"
+            aria-label="SPECTRA controls"
+        >
+            <button id="startBtn" type="button">
+                START CAMERA
+            </button>
+
+            <button id="trackingBtn" type="button">
+                HAND TRACKING ON
+            </button>
+
+            <button id="targetBtn" type="button">
+                TARGET BOX ON
+            </button>
+
+            <button id="objectBtn" type="button">
+                OBJECT DETECTION OFF
+            </button>
+
+            <button id="privacyBtn" type="button">
+                FACE PRIVACY OFF
+            </button>
+
+            <button id="signBtn" type="button">
+                SIGN LANGUAGE OFF
+            </button>
+
+            <button id="filterBtn" type="button">
+                FILTER OFF
+            </button>
+
+            <button id="shapeBtn" type="button">
+                SHAPES ON
+            </button>
+        </section>
+
+        <section
+            class="info-panel"
+            aria-label="Tracking information"
+        >
+            <div>
+                <span>HANDS</span>
+                <strong id="handsInfo">0</strong>
+            </div>
+
+            <div>
+                <span>FACES</span>
+                <strong id="facesInfo">0</strong>
+            </div>
+
+            <div>
+                <span>GESTURE</span>
+                <strong id="gestureInfo">NONE</strong>
+            </div>
+
+            <div>
+                <span>SIGN</span>
+                <strong id="signInfo">NONE</strong>
+            </div>
+
+            <div>
+                <span>SHAPES</span>
+                <strong id="shapesInfo">0</strong>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="script.js"></script>
 </body>
 </html>
